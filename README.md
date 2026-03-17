@@ -1,7 +1,7 @@
 
 # must
 
-[![CI](https://github.com/must-lang/must/actions/workflows/ci.yml/badge.svg)](https://github.com/must-lang/must/actions)
+[![CI](https://github.com/must-lang/must/actions/workflows/rust.yml/badge.svg)](https://github.com/must-lang/must/actions)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 
 To avoid the "AI slop" look, the key is to strip out all the emojis (no rockets, no stars), drop the overly enthusiastic marketing adjectives ("revolutionary", "blazing fast"), and write it exactly how a senior systems engineer would write it: dry, factual, scannable, and focused strictly on the code and the developer experience.
