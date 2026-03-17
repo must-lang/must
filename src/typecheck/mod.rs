@@ -336,9 +336,8 @@ impl<'db> InferenceCtx<'db> {
                         .accumulate(self.db);
                         return vec![];
                     }
-                    
-                    pats
-                        .into_iter()
+
+                    pats.into_iter()
                         .zip(tps)
                         .flat_map(|(pat, tp)| self.check_pat(pat, &tp))
                         .collect()

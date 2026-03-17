@@ -1,10 +1,11 @@
 use line_index::LineIndex;
-use salsa::Database;
+
 use tower_lsp::{LanguageServer, LspService, Server, jsonrpc, lsp_types::*};
 
+use crate::diagnostic;
 use crate::parser::Source;
+use crate::queries::compile_all;
 use crate::state::State;
-use crate::{diagnostic, parser};
 
 pub async fn run() {
     let stdin = tokio::io::stdin();
@@ -36,11 +37,6 @@ pub fn get_module_name(url: &Url) -> &str {
         .split('.')
         .next()
         .unwrap_or("unknown")
-}
-
-#[salsa::tracked]
-fn compile_all<'db>(db: &'db dyn Database, source: Source) {
-    let _ = parser::into_hir(db, source);
 }
 
 #[tower_lsp::async_trait]

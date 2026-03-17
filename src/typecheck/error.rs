@@ -16,7 +16,11 @@ impl Diagnostic {
     }
 
     pub(super) fn cannot_deref(db: &dyn Database, span: Span) -> Self {
-        Diagnostic::error(db, span, "this expression cannot be dereferenced".to_string())
+        Diagnostic::error(
+            db,
+            span,
+            "this expression cannot be dereferenced".to_string(),
+        )
     }
 
     pub(super) fn type_mismatch(db: &dyn Database, span: Span, exp: SType, got: SType) -> Self {

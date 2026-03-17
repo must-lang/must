@@ -2,6 +2,7 @@ mod diagnostic;
 mod lsp;
 mod parser;
 mod pipeline;
+mod queries;
 mod span;
 mod state;
 mod typecheck;
