@@ -6,5 +6,8 @@ input_file: tests/inputs/error.must
 EXIT CODE: 0
 
 --- STDOUT ---
+Program evaluated to: Ptr(
+    2,
+)
 
 --- STDERR ---

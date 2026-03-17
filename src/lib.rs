@@ -1,4 +1,6 @@
 mod diagnostic;
+mod eval;
+mod ir;
 mod lsp;
 mod parser;
 mod pipeline;

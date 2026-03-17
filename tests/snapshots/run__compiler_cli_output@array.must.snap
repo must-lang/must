@@ -6,5 +6,13 @@ input_file: tests/inputs/array.must
 EXIT CODE: 0
 
 --- STDOUT ---
+output: 4
+output: 5
+output: 6
+output: 9
+output: 13
+Program evaluated to: Num(
+    6,
+)
 
 --- STDERR ---

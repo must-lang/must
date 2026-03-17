@@ -6,8 +6,8 @@ use crate::{parser, typecheck};
 pub fn compile_all<'db>(
     db: &'db dyn Database,
     source: parser::Source,
-) -> Option<typecheck::InferenceResult<'db>> {
+) -> Option<(typecheck::InferenceResult<'db>, parser::ast::File<'db>)> {
     let prog = parser::into_hir(db, source)?;
     let inference = typecheck::check_file(db, prog);
-    Some(inference)
+    Some((inference, prog))
 }

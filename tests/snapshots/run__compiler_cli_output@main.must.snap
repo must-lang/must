@@ -6,5 +6,13 @@ input_file: tests/inputs/main.must
 EXIT CODE: 0
 
 --- STDOUT ---
+output: 42
+output: 7
+output: 8
+output: 9
+output: 10
+Program evaluated to: Tuple(
+    [],
+)
 
 --- STDERR ---
