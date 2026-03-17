@@ -1,16 +1,22 @@
 use clap::Parser;
 
-use must::run_pipeline;
-
 #[derive(clap::Parser)]
 enum Cfg {
+    /// Run in lsp mode.
+    Lsp {
+        /// Use stdio.
+        #[arg(short, long, default_value_t = true)]
+        stdio: bool,
+    },
     /// Run a file.
     Run { file_name: String },
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let cfg = Cfg::parse();
     match cfg {
-        Cfg::Run { file_name } => run_pipeline(file_name),
+        Cfg::Lsp { .. } => must::run_lsp().await,
+        Cfg::Run { file_name } => must::run_pipeline(file_name),
     }
 }
