@@ -4,6 +4,8 @@ use lalrpop_util::ParseError;
 use line_index::LineIndex;
 use tower_lsp::lsp_types;
 
+use crate::span::Span;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Severity {
     Error,
@@ -20,6 +22,16 @@ pub struct Diagnostic {
 }
 
 impl Diagnostic {
+    pub fn error(db: &dyn salsa::Database, span: Span, message: impl Into<String>) -> Self {
+        Self {
+            severity: Severity::Error,
+            start_byte: span.start_byte(db),
+            end_byte: span.end_byte(db),
+            message: message.into(),
+            notes: vec![],
+        }
+    }
+
     pub fn as_ariadne_report<'a>(
         &self,
         filename: &'a String,
