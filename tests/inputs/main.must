@@ -1,0 +1,46 @@
+
+fn main() -> () {
+    let x = (0, test()) in
+    let (_, z) = x in
+    loop(z)
+}
+
+fn loop(x: int) -> () {
+    match le(x, 10) {
+        true => let _ = printnum(x) in loop(add(x, 1)),
+        false => ()
+    }
+}
+
+fn stupid() -> int {
+    match (1, 2, 3) {
+        (x, y, mut z) => let _ = z := 42 in z
+    }
+}
+
+fn test() -> int {
+    let _ = printnum(42) in
+    let mut x = stupid() in
+    let mut y = 7 in
+    let _ = swap(&x, &y) in
+    x
+}
+
+fn swap(x: *mut int, y: *mut int) -> () {
+    let tmp = *x in
+    let _ = x <- *y in
+    let _ = y <- tmp in
+    ()
+}
+
+fn add(x: int, y: int) -> int {
+    @intadd(x, y)
+}
+
+fn le(x: int, y: int) -> bool {
+    @intle(x, y)
+}
+
+fn printnum(x: int) -> () {
+    @printnum(x)
+}

@@ -1,0 +1,56 @@
+
+fn main() -> int {
+    let mut x = [6, 2, 4, 5, 9] in
+    let _ = x[1] := 13 in
+    let _ = sort(&x, 0) in
+    let _ = printarr(&x, 0) in
+    x[2]
+}
+
+fn sort(arr: *mut [5]int, id: int) -> () {
+    match le(id, 4) {
+        false => (),
+        true => let _ = insert(arr, id) in sort(arr, add(id, 1)),
+    }
+}
+
+fn printarr(arr: *[5]int, id: int) -> () {
+    match le(id, 4) {
+        false => (),
+        true => let _ = printnum((*arr)[id]) in printarr(arr, add(id, 1)),
+    }
+}
+
+fn insert(mut arr: *mut [5]int, j: int) -> () {
+    match le(j, 0) {
+        true => (),
+        false => match le((*arr)[sub(j, 1)], (*arr)[j]) {
+            true => (),
+            false => let _ = swap(&(*arr)[sub(j, 1)], &(*arr)[j]) in insert(arr, sub(j, 1))
+        }
+    }
+}
+
+fn swap(x: *mut int, y: *mut int) -> () {
+    let tmp = *x in
+    let _ = x <- *y in
+    let _ = y <- tmp in
+    ()
+}
+
+fn printnum(x: int) -> () {
+    @printnum(x)
+}
+
+
+fn add(x: int, y: int) -> int {
+    @intadd(x, y)
+}
+
+fn sub(x: int, y: int) -> int {
+    @intsub(x, y)
+}
+
+fn le(x: int, y: int) -> bool {
+    @intle(x, y)
+}

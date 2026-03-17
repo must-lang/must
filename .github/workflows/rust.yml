@@ -1,0 +1,28 @@
+name: Rust
+
+on:
+    push:
+    pull_request:
+
+env:
+    CARGO_TERM_COLOR: always
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v6.0.2
+
+            - name: cargo-deny
+              uses: EmbarkStudios/cargo-deny-action@v2.0.15
+
+            - name: Rust Cache
+              uses: Swatinem/rust-cache@v2.9.1
+
+            - name: Build
+              run: cargo build --verbose
+
+            - name: Run tests
+              run: cargo test --verbose

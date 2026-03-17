@@ -1,0 +1,148 @@
+use super::ast::*;
+use crate::span::Span;
+use crate::diagnostic::Diagnostic;
+use salsa::Accumulator;
+
+grammar<'db>(db: &'db dyn salsa::Database);
+
+match {
+    r"\s*" => { },
+    r"#[^\n\r]*[\n\r]*" => { },
+} else { _ }
+
+CommaSep<T>: Vec<T> = {
+    <mut v:(<T> ",")*> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            v.push(e);
+            v
+        }
+    }
+};
+
+TwoOrMore<T>: Vec<T> = {
+    <first:T> "," <second:T> <rest: ("," <T>)*> (",")? => {
+        let mut v = Vec::new();
+        v.push(first);
+        v.push(second);
+        for t in rest {
+            v.push(t);
+        }
+        v
+    }
+};
+
+pub File: File<'db> = {
+    <defs: Def*> => {
+        File::new(db, defs)
+    }
+}
+
+Def: Def<'db> = {
+    FnDef => Def::FnDef(<>),
+}
+
+FnDef: FnDef<'db> = {
+    "fn" <name: Ident> "(" <args: CommaSep<FnArg>> ")" "->" <ret_type: TypeExpr> "{" <body: Expr> "}" => {
+        FnDef::new(db, name, args, ret_type, body)
+    }
+}
+
+Ident: Ident<'db> = {
+    r"[a-zA-Z]+" => Ident::new(db, <>)
+}
+
+Num: usize = {
+    r"[0-9]+" => <>.parse::<usize>().unwrap()
+}
+
+FnArg: (PatternId<'db>, TypeExprId<'db>) = {
+    <s: Pattern> ":" <tp: TypeExpr> => (s, tp)
+}
+
+TypeExpr: TypeExprId<'db> = {
+    <l: @L> <data: TypeExprData> <r: @R> => {
+        let span = Span::new(db, l, r);
+        TypeExprId::new(db, data, span)
+    }
+}
+
+TypeExprData: TypeExprData<'db> = {
+    "int" => TypeExprData::Int,
+    "(" ")" => TypeExprData::Tuple(vec![]),
+    "bool" => TypeExprData::Bool,
+    "*" <tp: TypeExpr> => TypeExprData::Ptr { tp, is_mut: false },
+    "*" "mut" <tp: TypeExpr> => TypeExprData::Ptr { tp, is_mut: true },
+    "[" <size: Num> "]" <tp: TypeExpr> => TypeExprData::Array(size, tp),
+    "fn" "(" <args: CommaSep<TypeExpr>> ")" "->" <ret_type: TypeExpr> => TypeExprData::Fn(args, ret_type),
+}
+
+// ==========================================
+
+SpannedExpr<Data>: ExprId<'db> = {
+    <l: @L> <data: Data> <r: @R> => {
+        let span = Span::new(db, l, r);
+        ExprId::new(db, data, span)
+    }
+};
+
+Expr = SpannedExpr<ExprData>;
+Expr1 = SpannedExpr<Expr1Data>;
+Expr0 = SpannedExpr<Expr0Data>;
+
+ExprData: ExprData<'db> = {
+    "let" <pat: Pattern> "=" <e1: Expr> "in" <e2: Expr> => ExprData::Let(pat, e1, e2),
+    "match" <e: Expr> "{" <cls: CommaSep<MatchCls>> "}" => ExprData::Match(e, cls),
+    Expr1Data
+}
+
+Expr1Data: ExprData<'db> = {
+    <e1: Expr0> ":=" <e2: Expr1> => ExprData::Assign(e1, e2),
+    <e1: Expr0> "<-" <e2: Expr1> => ExprData::Store(e1, e2),
+    "*" <e: Expr> => ExprData::Load(e),
+    "&" <e: Expr> => ExprData::AddressOf(e),
+    Expr0Data
+}
+
+Expr0Data: ExprData<'db> = {
+    <e1: Expr0> "[" <e2:Expr> "]" => ExprData::Index(e1, e2),
+    "(" ")" => ExprData::Tuple(vec![]),
+    "(" <expr: ExprData> ")" => expr, 
+    "(" <exprs: TwoOrMore<Expr>> ")" => ExprData::Tuple(exprs),
+    "[" <exprs: CommaSep<Expr>> "]" => ExprData::Array(exprs),
+
+
+    "true" => ExprData::True,
+    "false" => ExprData::False,
+    Num => ExprData::Num(<>),
+    <s: Ident> => ExprData::Var(s),
+    "@" <s: Ident> "(" <args: CommaSep<Expr>> ")" => ExprData::Builtin(s, args),
+    <s: Ident> "(" <args: CommaSep<Expr>> ")" => ExprData::FnCall(s, args),
+    
+    ! => {
+        Diagnostic::parser_error(<>.error).accumulate(db);
+        ExprData::Error
+    }
+}
+
+// ==========================================
+
+MatchCls: (PatternId<'db>, ExprId<'db>) = {
+    <pat: Pattern> "=>" <expr: Expr> => (pat, expr)
+}
+
+Pattern: PatternId<'db> = {
+    <l: @L> <data: PatternData> <r: @R> => {
+        let span = Span::new(db, l, r);
+        PatternId::new(db, data, span)
+    }
+}
+
+PatternData: PatternData<'db> = {
+    "_" => PatternData::Wildcard,
+    "true" => PatternData::True,
+    "false" => PatternData::False,
+    "(" <pats: CommaSep<Pattern>> ")" => PatternData::Tuple(pats), 
+    <name: Ident> => PatternData::Var { name, is_mut: false },
+    "mut" <name: Ident> => PatternData::Var { name, is_mut: true }
+}

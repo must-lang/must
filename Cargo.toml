@@ -1,0 +1,29 @@
+[package]
+name = "must"
+version = "0.1.0"
+edition = "2024"
+description = "A modern reimagination of C with ergonomic syntax."
+authors = ["Dominik Muc <me@dominikmuc.com>"]
+repository = "https://github.com/must-lang/must"
+homepage = "https://must-lang.org"
+license = "MIT OR Apache-2.0"                                             # Standard for the Rust ecosystem
+readme = "README.md"
+keywords = ["compiler", "language", "c", "must"]
+categories = ["command-line-utilities", "development-tools::build-utils"]
+
+[dependencies]
+ariadne = "0.6.0"
+clap = { version = "4.6.0", features = ["derive"] }
+lalrpop-util = "0.23.1"
+salsa = "0.26.0"
+
+[build-dependencies]
+lalrpop = "0.23.1"
+
+[dev-dependencies]
+insta = { version = "1.46.3", features = ["glob"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
