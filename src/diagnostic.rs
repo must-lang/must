@@ -1,6 +1,8 @@
 use std::{fmt::Display, ops::Range};
 
 use lalrpop_util::ParseError;
+use line_index::LineIndex;
+use tower_lsp::lsp_types;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Severity {
@@ -33,6 +35,30 @@ impl Diagnostic {
         );
         builder.with_notes(&self.notes);
         builder.finish()
+    }
+
+    pub fn as_lsp_diagnostic(&self, idx: &LineIndex) -> lsp_types::Diagnostic {
+        lsp_types::Diagnostic {
+            range: lsp_types::Range {
+                start: {
+                    let line_col = idx.line_col((self.start_byte as u32).into());
+                    lsp_types::Position {
+                        line: line_col.line,
+                        character: line_col.col,
+                    }
+                },
+                end: {
+                    let line_col = idx.line_col((self.end_byte as u32).into());
+                    lsp_types::Position {
+                        line: line_col.line,
+                        character: line_col.col,
+                    }
+                },
+            },
+            severity: Some(lsp_types::DiagnosticSeverity::ERROR),
+            message: self.message.clone(),
+            ..Default::default()
+        }
     }
 
     pub fn parser_error<T: Display, E>(err: ParseError<usize, T, E>) -> Self {

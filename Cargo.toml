@@ -15,7 +15,10 @@ categories = ["command-line-utilities", "development-tools::build-utils"]
 ariadne = "0.6.0"
 clap = { version = "4.6.0", features = ["derive"] }
 lalrpop-util = "0.23.1"
+line-index = "0.1.2"
 salsa = "0.26.0"
+tokio = { version = "1.50.0", features = ["full"] }
+tower-lsp = "0.20.0"
 
 [build-dependencies]
 lalrpop = "0.23.1"
