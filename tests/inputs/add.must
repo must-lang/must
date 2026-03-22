@@ -1,0 +1,10 @@
+
+fn main() -> int {
+    let mut x = 13 in
+    let _ = x := 1 in
+    add(x, 42)
+}
+
+fn add(x: int, y: int) -> int {
+    @intadd(x, y)
+}

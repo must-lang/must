@@ -1,7 +1,7 @@
 use ariadne::Source;
 use salsa::DatabaseImpl;
 
-use crate::{diagnostic::Diagnostic, eval, ir, parser, queries};
+use crate::{diagnostic::Diagnostic, parser, queries, vm};
 
 pub fn run(filename: String) {
     let text = std::fs::read_to_string(&filename).unwrap();
@@ -19,8 +19,8 @@ pub fn run(filename: String) {
     if let Some((_, prog)) = result
         && err_count == 0
     {
-        let prog = ir::compile(db, prog);
-        let v = eval::eval(prog);
+        let prog = vm::lower::compile(db, prog);
+        let v = vm::run(prog);
         println!("Program evaluated to: {:#?}", v);
     } else {
         eprintln!("Errors occured. Compilation aborted.")
