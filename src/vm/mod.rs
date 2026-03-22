@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-mod ir;
+pub mod ir;
 pub mod lower;
 
 pub fn run(prog: ir::Prog) -> Value {

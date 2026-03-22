@@ -1,8 +1,12 @@
 
+
 fn main() -> int {
     let mut x = 13 in
     let _ = x := 1 in
-    add(x, 42)
+    match false {
+        true => 1,
+        false => 0
+    }
 }
 
 fn add(x: int, y: int) -> int {

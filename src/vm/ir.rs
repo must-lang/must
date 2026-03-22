@@ -84,3 +84,50 @@ impl IrBuilder {
         self.current_block = id
     }
 }
+
+use std::fmt;
+
+impl fmt::Display for Prog {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (name, func) in &self.funcs {
+            writeln!(f, "fn {}({}):", name, func.register_count)?;
+            for (id, block) in func.blocks.iter().enumerate() {
+                writeln!(f, "  block {}:", id)?;
+                for inst in &block.instrs {
+                    writeln!(f, "    {}", inst)?;
+                }
+                writeln!(f, "    {}", block.terminator)?;
+            }
+            writeln!(f)?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for Inst {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Inst::LoadInt(r, v) => write!(f, "r{} = load_int {}", r.0, v),
+            Inst::LoadBool(r, v) => write!(f, "r{} = load_bool {}", r.0, v),
+            Inst::Add(dst, lhs, rhs) => write!(f, "r{} = add r{} r{}", dst.0, lhs.0, rhs.0),
+            Inst::Assign(dst, src) => write!(f, "r{} = assign r{}", dst.0, src.0),
+            Inst::CmpEq(dst, lhs, rhs) => write!(f, "r{} = eq r{} r{}", dst.0, lhs.0, rhs.0),
+            Inst::FnCall(dst, name, args) => {
+                let args_str: Vec<String> = args.iter().map(|r| format!("r{}", r.0)).collect();
+                write!(f, "r{} = call {} [{}]", dst.0, name, args_str.join(" "))
+            }
+        }
+    }
+}
+
+impl fmt::Display for Terminator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Terminator::Return(r) => write!(f, "ret r{}", r.0),
+            Terminator::Jump(b) => write!(f, "jmp b{}", b.0),
+            Terminator::BranchIf { cond, th, el } => {
+                write!(f, "br r{} b{} b{}", cond.0, th.0, el.0)
+            }
+        }
+    }
+}
