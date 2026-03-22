@@ -42,6 +42,7 @@ pub fn lower_function<'db>(db: &'db dyn Database, ast_fn: ast::FnDef<'db>) -> (S
         ir::Func {
             register_count: builder.next_reg,
             blocks: builder.blocks,
+            stack_slots: builder.stack_slots,
         },
     )
 }
@@ -117,7 +118,7 @@ impl<'a> LowerCtx<'a> {
             ast::ExprData::AddressOf(expr_id) => todo!(),
             ast::ExprData::Load(expr_id) => todo!(),
             ast::ExprData::Store(expr_id, expr_id1) => todo!(),
-            ast::ExprData::Tuple(expr_ids) => todo!(),
+            ast::ExprData::Tuple(exprs) => todo!(),
             ast::ExprData::Array(expr_ids) => todo!(),
             ast::ExprData::Index(expr_id, expr_id1) => todo!(),
             ast::ExprData::Match(expr, arms) => {

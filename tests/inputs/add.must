@@ -2,6 +2,7 @@
 
 fn main() -> int {
     let mut x = 13 in
+    let tupl = (x, 165) in
     let _ = x := 1 in
     match false {
         true => 1,

@@ -4,7 +4,11 @@ pub mod ir;
 pub mod lower;
 
 pub fn run(prog: ir::Prog) -> Value {
-    let vm = VM { funcs: prog.funcs };
+    let mut vm = VM {
+        funcs: &prog.funcs,
+        stack: vec![],
+    };
+
     vm.call_func("main", vec![])
 }
 
@@ -16,19 +20,23 @@ pub enum Value {
     Int(usize),
 }
 
-struct VM {
-    funcs: HashMap<String, ir::Func>,
+struct VM<'a> {
+    funcs: &'a HashMap<String, ir::Func>,
+    stack: Vec<Value>,
 }
 
-impl VM {
-    pub fn call_func(&self, name: &str, args: Vec<Value>) -> Value {
+impl<'a> VM<'a> {
+    pub fn call_func(&mut self, name: &str, args: Vec<Value>) -> Value {
         let func = self.funcs.get(name).unwrap();
         let mut next_block_id = 0;
         let mut regs: Vec<Value> = vec![Value::Null; func.register_count];
         for i in 0..args.len() {
             regs[i] = args[i]
         }
-        loop {
+        // base ptr
+        let bp = self.stack.len();
+
+        let v = loop {
             for instr in &func.blocks[next_block_id].instrs {
                 match instr {
                     ir::Inst::LoadInt(reg, n) => regs[reg.0] = Value::Int(*n),
@@ -50,6 +58,12 @@ impl VM {
                             Value::False
                         }
                     }
+                    ir::Inst::StackLoad(reg, ss, offset) => {
+                        regs[reg.0] = self.stack[bp + ss.0 + offset]
+                    }
+                    ir::Inst::StackStore(ss, offset, reg) => {
+                        self.stack[bp + ss.0 + offset] = regs[reg.0]
+                    }
                 }
             }
 
@@ -60,6 +74,10 @@ impl VM {
                     next_block_id = if regs[cond.0] == Value::True { th } else { el }.0
                 }
             }
-        }
+        };
+
+        // free the stack
+        self.stack.truncate(bp);
+        v
     }
 }

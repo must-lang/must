@@ -11,10 +11,19 @@ pub struct Reg(pub usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BlockId(pub usize);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct StackSlotId(pub usize);
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Func {
     pub register_count: usize,
     pub blocks: Vec<Block>,
+    pub stack_slots: Vec<StackSlot>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StackSlot {
+    pub size: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -31,6 +40,9 @@ pub enum Inst {
     Assign(Reg, Reg),              // r1 <- r2
     FnCall(Reg, String, Vec<Reg>), // r1 <- "name"(regs)
     CmpEq(Reg, Reg, Reg),          // r1 <- r2 == r3
+
+    StackLoad(Reg, StackSlotId, usize),  // r1 <- *(ss + offset)
+    StackStore(StackSlotId, usize, Reg), // ss + offset <- r1
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -43,6 +55,7 @@ pub enum Terminator {
 pub struct IrBuilder {
     pub blocks: Vec<Block>,
     pub current_block: BlockId,
+    pub stack_slots: Vec<StackSlot>,
     pub next_reg: usize,
 }
 
@@ -53,6 +66,7 @@ impl IrBuilder {
                 instrs: vec![],
                 terminator: Terminator::Return(Reg(0)),
             }],
+            stack_slots: vec![],
             current_block: BlockId(0),
             next_reg: 0,
         }
@@ -82,6 +96,11 @@ impl IrBuilder {
 
     pub fn switch_to_block(&mut self, id: BlockId) {
         self.current_block = id
+    }
+
+    pub fn new_stack_slot(&mut self, size: usize) -> StackSlotId {
+        self.stack_slots.push(StackSlot { size });
+        StackSlotId(self.stack_slots.len() - 1)
     }
 }
 
@@ -115,6 +134,12 @@ impl fmt::Display for Inst {
             Inst::FnCall(dst, name, args) => {
                 let args_str: Vec<String> = args.iter().map(|r| format!("r{}", r.0)).collect();
                 write!(f, "r{} = call {} [{}]", dst.0, name, args_str.join(" "))
+            }
+            Inst::StackLoad(reg, ss, offset) => {
+                write!(f, "r{} = load s{} + {}", reg.0, ss.0, offset)
+            }
+            Inst::StackStore(ss, offset, reg) => {
+                write!(f, "s{} + {} = r{}", ss.0, offset, reg.0)
             }
         }
     }
