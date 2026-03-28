@@ -6,23 +6,26 @@ pub mod lower;
 pub fn run(prog: ir::Prog) -> Value {
     let mut vm = VM {
         funcs: &prog.funcs,
-        stack: vec![],
+        stack: [Value::Null; 1024],
+        stack_ptr: 0,
     };
 
     vm.call_func("main", vec![])
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Value {
     Null,
     True,
     False,
     Int(usize),
+    Ptr(usize),
 }
 
 struct VM<'a> {
     funcs: &'a HashMap<String, ir::Func>,
-    stack: Vec<Value>,
+    stack: [Value; 1024],
+    stack_ptr: usize,
 }
 
 impl<'a> VM<'a> {
@@ -34,7 +37,7 @@ impl<'a> VM<'a> {
             regs[i] = args[i]
         }
         // base ptr
-        let bp = self.stack.len();
+        let bp = self.stack_ptr;
 
         let v = loop {
             for instr in &func.blocks[next_block_id].instrs {
@@ -64,6 +67,36 @@ impl<'a> VM<'a> {
                     ir::Inst::StackStore(ss, offset, reg) => {
                         self.stack[bp + ss.0 + offset] = regs[reg.0]
                     }
+                    ir::Inst::StackAddr(reg, ss, offset) => {
+                        regs[reg.0] = Value::Ptr(bp + ss.0 + offset);
+                    }
+                    ir::Inst::Load(reg, reg1, offset) => {
+                        regs[reg.0] = self.stack[reg1.0 + offset];
+                    }
+                    ir::Inst::Store(reg, offset, reg1) => self.stack[reg.0 + offset] = regs[reg1.0],
+                    ir::Inst::MemCopy { src, dst, len } => match (regs[src.0], regs[dst.0]) {
+                        (Value::Ptr(src), Value::Ptr(dst)) => {
+                            for i in 0 as usize..*len {
+                                self.stack[dst + i] = self.stack[src + i]
+                            }
+                        }
+                        _ => panic!(),
+                    },
+                    ir::Inst::AddImm(reg, reg1, _) => todo!(),
+                    ir::Inst::CmpLe(reg, reg1, reg2) => {
+                        regs[reg.0] = if regs[reg1.0] <= regs[reg2.0] {
+                            Value::True
+                        } else {
+                            Value::False
+                        }
+                    }
+                    ir::Inst::PrintNum(reg) => {
+                        if let Value::Int(n) = regs[reg.0] {
+                            println!("output: {}", n)
+                        } else {
+                            panic!()
+                        }
+                    }
                 }
             }
 
@@ -77,7 +110,7 @@ impl<'a> VM<'a> {
         };
 
         // free the stack
-        self.stack.truncate(bp);
+        self.stack_ptr = bp;
         v
     }
 }

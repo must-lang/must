@@ -1,4 +1,5 @@
 mod diagnostic;
+mod layout;
 mod lsp;
 mod parser;
 mod pipeline;

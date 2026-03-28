@@ -1,12 +1,14 @@
 
 
 fn main() -> int {
-    let mut x = 13 in
-    let tupl = (x, 165) in
-    let _ = x := 1 in
-    match false {
-        true => 1,
-        false => 0
+    let mut v = 12 in
+    let _ = v := 42 in
+    let tupl = (13, 165, add(v, 10)) in
+    let rev = match tupl {
+        (x, _, z) => (z, x),
+    } in
+    match rev {
+        (x, y) => x
     }
 }
 

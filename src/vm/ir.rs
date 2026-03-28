@@ -37,12 +37,21 @@ pub enum Inst {
     LoadInt(Reg, usize),           // r1 <- int
     LoadBool(Reg, bool),           // r1 <- bool
     Add(Reg, Reg, Reg),            // r1 <- r2 + r3
+    AddImm(Reg, Reg, usize),       // r1 <- r2 + r3
     Assign(Reg, Reg),              // r1 <- r2
     FnCall(Reg, String, Vec<Reg>), // r1 <- "name"(regs)
     CmpEq(Reg, Reg, Reg),          // r1 <- r2 == r3
+    CmpLe(Reg, Reg, Reg),          // r1 <- r2 <= r3
 
+    StackAddr(Reg, StackSlotId, usize),  // r1 <- ss + offset
     StackLoad(Reg, StackSlotId, usize),  // r1 <- *(ss + offset)
     StackStore(StackSlotId, usize, Reg), // ss + offset <- r1
+
+    Load(Reg, Reg, usize),  // r1 <- *(r2 + offset)
+    Store(Reg, usize, Reg), // *(r1 + offset) <- r2
+
+    MemCopy { src: Reg, dst: Reg, len: usize },
+    PrintNum(Reg), // Temporary for debugging
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -141,6 +150,15 @@ impl fmt::Display for Inst {
             Inst::StackStore(ss, offset, reg) => {
                 write!(f, "s{} + {} = r{}", ss.0, offset, reg.0)
             }
+            Inst::StackAddr(reg, ss, offset) => {
+                write!(f, "r{} = s{} + {}", reg.0, ss.0, offset)
+            }
+            Inst::Load(reg, reg1, offset) => todo!(),
+            Inst::Store(reg, offset, reg1) => todo!(),
+            Inst::MemCopy { src, dst, len } => write!(f, "memcpy(r{}, r{}, {})", src.0, dst.0, len),
+            Inst::AddImm(reg, reg1, _) => todo!(),
+            Inst::CmpLe(reg, reg1, reg2) => todo!(),
+            Inst::PrintNum(reg) => todo!(),
         }
     }
 }
