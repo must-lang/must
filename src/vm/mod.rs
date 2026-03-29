@@ -39,12 +39,24 @@ impl<'a> VM<'a> {
         // base ptr
         let bp = self.stack_ptr;
 
+        let mut slot_offsets = vec![0; func.stack_slots.len()];
+        let mut total_frame_size = 0;
+
+        for (i, slot) in func.stack_slots.iter().enumerate() {
+            slot_offsets[i] = total_frame_size;
+            total_frame_size += slot.size;
+        }
+
+        self.stack_ptr += total_frame_size;
+
         let v = loop {
             for instr in &func.blocks[next_block_id].instrs {
                 match instr {
                     ir::Inst::LoadInt(reg, n) => regs[reg.0] = Value::Int(*n),
                     ir::Inst::Add(reg, reg1, reg2) => match (regs[reg1.0], regs[reg2.0]) {
                         (Value::Int(a), Value::Int(b)) => regs[reg.0] = Value::Int(a + b),
+                        (Value::Ptr(a), Value::Int(b)) => regs[reg.0] = Value::Ptr(a + b),
+                        (Value::Int(a), Value::Ptr(b)) => regs[reg.0] = Value::Ptr(a + b),
                         _ => panic!(),
                     },
                     ir::Inst::Assign(reg, reg1) => regs[reg.0] = regs[reg1.0],
@@ -62,18 +74,31 @@ impl<'a> VM<'a> {
                         }
                     }
                     ir::Inst::StackLoad(reg, ss, offset) => {
-                        regs[reg.0] = self.stack[bp + ss.0 + offset]
+                        let addr = bp + slot_offsets[ss.0] + offset;
+                        regs[reg.0] = self.stack[addr]
                     }
                     ir::Inst::StackStore(ss, offset, reg) => {
-                        self.stack[bp + ss.0 + offset] = regs[reg.0]
+                        let addr = bp + slot_offsets[ss.0] + offset;
+                        self.stack[addr] = regs[reg.0]
                     }
                     ir::Inst::StackAddr(reg, ss, offset) => {
-                        regs[reg.0] = Value::Ptr(bp + ss.0 + offset);
+                        let addr = bp + slot_offsets[ss.0] + offset;
+                        regs[reg.0] = Value::Ptr(addr);
                     }
-                    ir::Inst::Load(reg, reg1, offset) => {
-                        regs[reg.0] = self.stack[reg1.0 + offset];
+                    ir::Inst::Load(reg, reg_ptr, offset) => {
+                        if let Value::Ptr(addr) = regs[reg_ptr.0] {
+                            regs[reg.0] = self.stack[addr + offset];
+                        } else {
+                            panic!("Load expected a Ptr value in register");
+                        }
                     }
-                    ir::Inst::Store(reg, offset, reg1) => self.stack[reg.0 + offset] = regs[reg1.0],
+                    ir::Inst::Store(reg_ptr, offset, reg_val) => {
+                        if let Value::Ptr(addr) = regs[reg_ptr.0] {
+                            self.stack[addr + offset] = regs[reg_val.0];
+                        } else {
+                            panic!("Store expected a Ptr value in destination register");
+                        }
+                    }
                     ir::Inst::MemCopy { src, dst, len } => match (regs[src.0], regs[dst.0]) {
                         (Value::Ptr(src), Value::Ptr(dst)) => {
                             for i in 0 as usize..*len {
@@ -82,7 +107,11 @@ impl<'a> VM<'a> {
                         }
                         _ => panic!(),
                     },
-                    ir::Inst::AddImm(reg, reg1, _) => todo!(),
+                    ir::Inst::AddImm(reg, reg1, n) => match regs[reg1.0] {
+                        Value::Int(m) => regs[reg.0] = Value::Int(n + m),
+                        Value::Ptr(m) => regs[reg.0] = Value::Ptr(n + m),
+                        _ => panic!(),
+                    },
                     ir::Inst::CmpLe(reg, reg1, reg2) => {
                         regs[reg.0] = if regs[reg1.0] <= regs[reg2.0] {
                             Value::True
@@ -97,6 +126,14 @@ impl<'a> VM<'a> {
                             panic!()
                         }
                     }
+                    ir::Inst::Mul(reg, reg1, reg2) => match (regs[reg1.0], regs[reg2.0]) {
+                        (Value::Int(a), Value::Int(b)) => regs[reg.0] = Value::Int(a * b),
+                        _ => panic!(),
+                    },
+                    ir::Inst::Sub(reg, reg1, reg2) => match (regs[reg1.0], regs[reg2.0]) {
+                        (Value::Int(a), Value::Int(b)) => regs[reg.0] = Value::Int(a - b),
+                        _ => panic!(),
+                    },
                 }
             }
 

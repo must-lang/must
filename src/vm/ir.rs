@@ -37,6 +37,8 @@ pub enum Inst {
     LoadInt(Reg, usize),           // r1 <- int
     LoadBool(Reg, bool),           // r1 <- bool
     Add(Reg, Reg, Reg),            // r1 <- r2 + r3
+    Sub(Reg, Reg, Reg),            // r1 <- r2 + r3
+    Mul(Reg, Reg, Reg),            // r1 <- r2 * r3
     AddImm(Reg, Reg, usize),       // r1 <- r2 + r3
     Assign(Reg, Reg),              // r1 <- r2
     FnCall(Reg, String, Vec<Reg>), // r1 <- "name"(regs)
@@ -135,30 +137,53 @@ impl fmt::Display for Prog {
 impl fmt::Display for Inst {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Inst::LoadInt(r, v) => write!(f, "r{} = load_int {}", r.0, v),
-            Inst::LoadBool(r, v) => write!(f, "r{} = load_bool {}", r.0, v),
-            Inst::Add(dst, lhs, rhs) => write!(f, "r{} = add r{} r{}", dst.0, lhs.0, rhs.0),
-            Inst::Assign(dst, src) => write!(f, "r{} = assign r{}", dst.0, src.0),
-            Inst::CmpEq(dst, lhs, rhs) => write!(f, "r{} = eq r{} r{}", dst.0, lhs.0, rhs.0),
+            // --- Constants & Moves ---
+            Inst::LoadInt(dst, val) => write!(f, "r{} = int {}", dst.0, val),
+            Inst::LoadBool(dst, val) => write!(f, "r{} = bool {}", dst.0, val),
+            Inst::Assign(dst, src) => write!(f, "r{} = mov r{}", dst.0, src.0),
+
+            // --- Math & Logic ---
+            Inst::Add(dst, lhs, rhs) => write!(f, "r{} = add r{}, r{}", dst.0, lhs.0, rhs.0),
+            Inst::Sub(dst, lhs, rhs) => write!(f, "r{} = sub r{}, r{}", dst.0, lhs.0, rhs.0),
+            Inst::Mul(dst, lhs, rhs) => write!(f, "r{} = mul r{}, r{}", dst.0, lhs.0, rhs.0),
+            Inst::AddImm(dst, lhs, imm) => write!(f, "r{} = add_imm r{}, {}", dst.0, lhs.0, imm),
+            Inst::CmpEq(dst, lhs, rhs) => write!(f, "r{} = eq r{}, r{}", dst.0, lhs.0, rhs.0),
+            Inst::CmpLe(dst, lhs, rhs) => write!(f, "r{} = le r{}, r{}", dst.0, lhs.0, rhs.0),
+
+            // --- Function Calls ---
             Inst::FnCall(dst, name, args) => {
-                let args_str: Vec<String> = args.iter().map(|r| format!("r{}", r.0)).collect();
-                write!(f, "r{} = call {} [{}]", dst.0, name, args_str.join(" "))
+                let args_str = args
+                    .iter()
+                    .map(|r| format!("r{}", r.0))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, "r{} = call {}({})", dst.0, name, args_str)
             }
-            Inst::StackLoad(reg, ss, offset) => {
-                write!(f, "r{} = load s{} + {}", reg.0, ss.0, offset)
+
+            // --- Stack Memory (sX) ---
+            Inst::StackAddr(dst, ss, offset) => {
+                write!(f, "r{} = &s{} + {}", dst.0, ss.0, offset)
             }
-            Inst::StackStore(ss, offset, reg) => {
-                write!(f, "s{} + {} = r{}", ss.0, offset, reg.0)
+            Inst::StackLoad(dst, ss, offset) => {
+                write!(f, "r{} = [s{} + {}]", dst.0, ss.0, offset)
             }
-            Inst::StackAddr(reg, ss, offset) => {
-                write!(f, "r{} = s{} + {}", reg.0, ss.0, offset)
+            Inst::StackStore(ss, offset, src) => {
+                write!(f, "[s{} + {}] = r{}", ss.0, offset, src.0)
             }
-            Inst::Load(reg, reg1, offset) => todo!(),
-            Inst::Store(reg, offset, reg1) => todo!(),
-            Inst::MemCopy { src, dst, len } => write!(f, "memcpy(r{}, r{}, {})", src.0, dst.0, len),
-            Inst::AddImm(reg, reg1, _) => todo!(),
-            Inst::CmpLe(reg, reg1, reg2) => todo!(),
-            Inst::PrintNum(reg) => todo!(),
+
+            // --- Dynamic Pointers (rX) ---
+            Inst::Load(dst, ptr, offset) => {
+                write!(f, "r{} = [r{} + {}]", dst.0, ptr.0, offset)
+            }
+            Inst::Store(ptr, offset, src) => {
+                write!(f, "[r{} + {}] = r{}", ptr.0, offset, src.0)
+            }
+            Inst::MemCopy { src, dst, len } => {
+                write!(f, "memcpy dst=r{}, src=r{}, len={}", dst.0, src.0, len)
+            }
+
+            // --- Builtins ---
+            Inst::PrintNum(src) => write!(f, "print r{}", src.0),
         }
     }
 }

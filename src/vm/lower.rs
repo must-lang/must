@@ -40,7 +40,8 @@ pub fn lower_function<'db>(
 
     for (pat, _) in ast_fn.args(db) {
         let reg = ctx.builder.new_reg();
-        ctx.lower_pat(pat, Value::LVal(Place::Reg(reg)), None, &SType::Error);
+        // TODO: get proper types, sret etc
+        ctx.lower_pat(pat, Value::LVal(Place::Reg(reg)), None, &SType::Int);
     }
 
     let res_reg = ctx.builder.new_reg();
@@ -202,7 +203,7 @@ impl<'a> LowerCtx<'a> {
                 let mut vals: Vec<_> = args
                     .iter()
                     .map(|e| self.lower_value(*e, None))
-                    .rev() // why rev ??????
+                    .rev() // Rev: because i will be popping arguments from the back.
                     .collect();
 
                 let v = match name.text(self.db).as_str() {
@@ -211,6 +212,13 @@ impl<'a> LowerCtx<'a> {
                         let y = vals.pop().unwrap().load_scalar(self.builder);
                         let reg = self.builder.new_reg();
                         self.builder.push_instr(ir::Inst::Add(reg, x, y));
+                        Value::LVal(Place::Reg(reg))
+                    }
+                    "intsub" => {
+                        let x = vals.pop().unwrap().load_scalar(self.builder);
+                        let y = vals.pop().unwrap().load_scalar(self.builder);
+                        let reg = self.builder.new_reg();
+                        self.builder.push_instr(ir::Inst::Sub(reg, x, y));
                         Value::LVal(Place::Reg(reg))
                     }
                     "intle" => {
@@ -236,7 +244,7 @@ impl<'a> LowerCtx<'a> {
                 let vals: Vec<_> = args
                     .iter()
                     .map(|e| self.lower_value(*e, None).load_scalar(self.builder))
-                    .rev()
+                    // Unlike builtin NO rev here.
                     .collect();
                 let reg = self.builder.new_reg();
                 self.builder
@@ -279,17 +287,47 @@ impl<'a> LowerCtx<'a> {
                         self.lower_value(e2, Some(place));
                     }
                     Value::Unit => (),
-                    Value::Int(_) => {
-                        let reg = v1.load_scalar(self.builder);
-                    }
+                    Value::Int(_) => panic!(),
                 }
 
                 Value::Unit
             }
-            ast::ExprData::AddressOf(expr_id) => todo!(),
-            ast::ExprData::Load(expr_id) => todo!(),
-            ast::ExprData::Store(expr_id, expr_id1) => todo!(),
-            ast::ExprData::Tuple(exprs) => {
+            ast::ExprData::AddressOf(expr) => {
+                let reg = match self.lower_value(expr, None) {
+                    Value::Unit => todo!(),
+                    Value::Int(_) => todo!(),
+                    Value::LVal(place) => place.as_addr(self.builder),
+                };
+                let v = Value::LVal(Place::Reg(reg));
+                if let Some(dest) = dest {
+                    v.write_to(dest, size, self.builder);
+                }
+                v
+            }
+            ast::ExprData::Load(expr) => {
+                let ptr = self.lower_value(expr, None).load_scalar(self.builder);
+                let v = Value::LVal(Place::DynamicPtr {
+                    base: ptr,
+                    offset: 0,
+                });
+                if let Some(dest) = dest {
+                    v.write_to(dest, size, self.builder);
+                }
+                v
+            }
+            ast::ExprData::Store(expr1, expr2) => {
+                let ptr_reg = self.lower_value(expr1, None).load_scalar(self.builder);
+
+                let dest_place = Place::DynamicPtr {
+                    base: ptr_reg,
+                    offset: 0,
+                };
+
+                self.lower_value(expr2, Some(dest_place));
+
+                Value::Unit
+            }
+            ast::ExprData::Array(exprs) | ast::ExprData::Tuple(exprs) => {
                 let place = dest.unwrap_or_else(|| Place::Stack {
                     slot: self.builder.new_stack_slot(size),
                     offset: 0,
@@ -301,8 +339,29 @@ impl<'a> LowerCtx<'a> {
                 }
                 Value::LVal(place)
             }
-            ast::ExprData::Array(expr_ids) => todo!(),
-            ast::ExprData::Index(expr_id, expr_id1) => todo!(),
+            ast::ExprData::Index(expr, id_expr) => {
+                let id = self.lower_value(id_expr, None).load_scalar(self.builder);
+                let size_reg = self.builder.new_reg();
+                self.builder.push_instr(ir::Inst::LoadInt(size_reg, size));
+                let offset_reg = self.builder.new_reg();
+                self.builder
+                    .push_instr(ir::Inst::Mul(offset_reg, size_reg, id));
+                let base_ptr = match self.lower_value(expr, None) {
+                    Value::Unit => todo!(),
+                    Value::Int(_) => todo!(),
+                    Value::LVal(place) => place.as_addr(self.builder),
+                };
+                self.builder
+                    .push_instr(ir::Inst::Add(base_ptr, base_ptr, offset_reg));
+                let v = Value::LVal(Place::DynamicPtr {
+                    base: base_ptr,
+                    offset: 0,
+                });
+                if let Some(dest) = dest {
+                    v.write_to(dest, size, self.builder);
+                }
+                v
+            }
             ast::ExprData::Match(target_expr, arms) => {
                 let val = self.lower_value(target_expr, None);
 
@@ -385,19 +444,27 @@ impl<'a> LowerCtx<'a> {
                 _ => todo!(),
             },
             ast::PatternData::Var { name, is_mut } => {
-                let s = match s {
-                    Value::Unit => s,
-                    Value::Int(_) => {
-                        if is_mut {
-                            let reg = s.load_scalar(self.builder);
-                            Value::LVal(Place::Reg(reg))
-                        } else {
-                            s
-                        }
-                    }
-                    Value::LVal(_) => s,
+                // let s = match s {
+                //     Value::Unit => s,
+                //     Value::Int(_) => {
+                //         if is_mut {
+                //             let reg = s.load_scalar(self.builder);
+                //             Value::LVal(Place::Reg(reg))
+                //         } else {
+                //             s
+                //         }
+                //     }
+                //     Value::LVal(_) => s,
+                // };
+
+                // Keep everything on stack for now.
+                let size = get_size(tp);
+                let place = Place::Stack {
+                    slot: self.builder.new_stack_slot(size),
+                    offset: 0,
                 };
-                self.extend(name, s);
+                s.write_to(place, size, self.builder);
+                self.extend(name, Value::LVal(place));
             }
         }
     }
