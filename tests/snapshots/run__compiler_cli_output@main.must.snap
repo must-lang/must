@@ -11,8 +11,6 @@ output: 7
 output: 8
 output: 9
 output: 10
-Program evaluated to: Tuple(
-    [],
-)
+Program evaluated to: Null
 
 --- STDERR ---

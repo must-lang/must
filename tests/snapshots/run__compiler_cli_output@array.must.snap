@@ -11,7 +11,7 @@ output: 5
 output: 6
 output: 9
 output: 13
-Program evaluated to: Num(
+Program evaluated to: Int(
     6,
 )
 

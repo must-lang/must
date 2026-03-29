@@ -300,7 +300,7 @@ impl<'a> LowerCtx<'a> {
     fn lookup(&self, ident: ast::Ident<'_>) -> Value {
         for scope in self.scopes.iter().rev() {
             if let Some(tp) = scope.get(&ident) {
-                return tp.clone();
+                return *tp;
             }
         }
         panic!()

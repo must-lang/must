@@ -32,9 +32,9 @@ impl<'a> VM<'a> {
         let func = self.funcs.get(name).unwrap();
         let mut next_block_id = 0;
         let mut regs: Vec<Value> = vec![Value::Null; func.register_count];
-        for i in 0..args.len() {
-            regs[i] = args[i]
-        }
+
+        regs[..args.len()].copy_from_slice(&args);
+
         // base ptr
         let bp = self.stack_ptr;
 
@@ -100,7 +100,7 @@ impl<'a> VM<'a> {
                     }
                     ir::Inst::MemCopy { src, dst, len } => match (regs[src.0], regs[dst.0]) {
                         (Value::Ptr(src), Value::Ptr(dst)) => {
-                            for i in 0 as usize..*len {
+                            for i in 0_usize..*len {
                                 self.stack[dst + i] = self.stack[src + i]
                             }
                         }
