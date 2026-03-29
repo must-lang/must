@@ -3,193 +3,21 @@ use std::collections::HashMap;
 use salsa::Database;
 
 use crate::{
+    bytecode::{ir, place::Place, value::Value},
     layout::get_size,
     parser::ast,
     typecheck::{self, SType},
-    vm::ir,
 };
 
-#[salsa::tracked]
-pub fn compile<'db>(db: &'db dyn Database, prog: ast::File<'db>) -> ir::Prog {
-    let types = typecheck::check_file(db, prog).types;
-    let mut funcs = HashMap::new();
-    for def in prog.defs(db) {
-        match def {
-            ast::Def::FnDef(fn_def) => {
-                let (name, func) = lower_function(db, *fn_def, &types);
-                funcs.insert(name, func);
-            }
-        }
-    }
-    ir::Prog { funcs }
-}
-
-pub fn lower_function<'db>(
-    db: &'db dyn Database,
-    ast_fn: ast::FnDef<'db>,
-    types: &'db HashMap<ast::ExprId<'db>, typecheck::SType>,
-) -> (String, ir::Func) {
-    let mut builder = ir::IrBuilder::new();
-
-    let mut ctx = LowerCtx {
-        db,
-        scopes: vec![HashMap::new()],
-        builder: &mut builder,
-        types,
-    };
-
-    for (pat, _) in ast_fn.args(db) {
-        let reg = ctx.builder.new_reg();
-        // TODO: get proper types, sret etc
-        ctx.lower_pat(pat, Value::LVal(Place::Reg(reg)), None, &SType::Int);
-    }
-
-    let res_reg = ctx.builder.new_reg();
-    ctx.lower_value(ast_fn.body(db), Some(Place::Reg(res_reg)));
-
-    builder.blocks[builder.current_block.0].terminator = ir::Terminator::Return(res_reg);
-
-    (
-        ast_fn.name(db).text(db).clone(),
-        ir::Func {
-            register_count: builder.next_reg,
-            blocks: builder.blocks,
-            stack_slots: builder.stack_slots,
-        },
-    )
-}
-
-struct LowerCtx<'a> {
-    db: &'a dyn Database,
-    scopes: Vec<HashMap<ast::Ident<'a>, Value>>,
-    builder: &'a mut ir::IrBuilder,
-    types: &'a HashMap<ast::ExprId<'a>, typecheck::SType>,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum Place {
-    Reg(ir::Reg),
-    DynamicPtr {
-        base: ir::Reg,
-        offset: usize,
-    },
-    Stack {
-        slot: ir::StackSlotId,
-        offset: usize,
-    },
-}
-
-#[derive(Debug, Clone, Copy)]
-enum Value {
-    Unit,
-    Int(usize),
-    LVal(Place),
-}
-
-impl Place {
-    pub fn add_offset(self, n: usize) -> Self {
-        match self {
-            Place::DynamicPtr { base, offset } => Place::DynamicPtr {
-                base,
-                offset: offset + n,
-            },
-            Place::Stack { slot, offset } => Place::Stack {
-                slot,
-                offset: offset + n,
-            },
-            Place::Reg(reg) => panic!(),
-        }
-    }
-
-    fn as_addr(&self, builder: &mut ir::IrBuilder) -> ir::Reg {
-        match self {
-            Place::Reg(reg) => panic!(),
-            Place::DynamicPtr { base, offset } => {
-                let reg = builder.new_reg();
-                builder.push_instr(ir::Inst::AddImm(reg, *base, *offset));
-                reg
-            }
-            Place::Stack { slot, offset } => {
-                let reg = builder.new_reg();
-                builder.push_instr(ir::Inst::StackAddr(reg, *slot, *offset));
-                reg
-            }
-        }
-    }
-}
-
-impl Value {
-    pub fn load_scalar(self, builder: &mut ir::IrBuilder) -> ir::Reg {
-        match self {
-            Value::LVal(place) => builder.load_from_place(place),
-            Value::Unit => panic!(),
-            Value::Int(n) => {
-                let reg = builder.new_reg();
-                builder.push_instr(ir::Inst::LoadInt(reg, n));
-                reg
-            }
-        }
-    }
-
-    pub fn write_to(self, dest: Place, size: usize, builder: &mut ir::IrBuilder) {
-        match self {
-            Value::LVal(src) => match (src, dest) {
-                (Place::Reg(reg), _) => builder.store_to_place(dest, reg),
-                (_, Place::Reg(_)) => {
-                    let reg = builder.load_from_place(src);
-                    builder.store_to_place(dest, reg)
-                }
-                (_, _) => {
-                    let r1 = src.as_addr(builder);
-                    let r2 = dest.as_addr(builder);
-                    builder.push_instr(ir::Inst::MemCopy {
-                        src: r1,
-                        dst: r2,
-                        len: size,
-                    });
-                }
-            },
-            Value::Unit => (),
-            Value::Int(n) => {
-                let reg = self.load_scalar(builder);
-                builder.store_to_place(dest, reg);
-            }
-        }
-    }
-}
-
-impl ir::IrBuilder {
-    pub fn load_from_place(&mut self, place: Place) -> ir::Reg {
-        match place {
-            Place::DynamicPtr { base, offset } => {
-                let reg = self.new_reg();
-                self.push_instr(ir::Inst::Load(reg, base, offset));
-                reg
-            }
-            Place::Stack { slot, offset } => {
-                let reg = self.new_reg();
-                self.push_instr(ir::Inst::StackLoad(reg, slot, offset));
-                reg
-            }
-            Place::Reg(reg) => reg,
-        }
-    }
-
-    pub fn store_to_place(&mut self, dest: Place, reg: ir::Reg) {
-        match dest {
-            Place::DynamicPtr { base, offset } => {
-                self.push_instr(ir::Inst::Store(base, offset, reg))
-            }
-            Place::Stack { slot, offset } => {
-                self.push_instr(ir::Inst::StackStore(slot, offset, reg))
-            }
-            Place::Reg(reg_dest) => self.push_instr(ir::Inst::Assign(reg_dest, reg)),
-        }
-    }
+pub struct LowerCtx<'a> {
+    pub db: &'a dyn Database,
+    pub scopes: Vec<HashMap<ast::Ident<'a>, Value>>,
+    pub builder: &'a mut ir::IrBuilder,
+    pub types: &'a HashMap<ast::ExprId<'a>, typecheck::SType>,
 }
 
 impl<'a> LowerCtx<'a> {
-    fn lower_value(&mut self, expr: ast::ExprId<'a>, dest: Option<Place>) -> Value {
+    pub fn lower_value(&mut self, expr: ast::ExprId<'a>, dest: Option<Place>) -> Value {
         let size = get_size(self.types.get(&expr).unwrap());
         match expr.data(self.db) {
             ast::ExprData::Num(n) => {
@@ -396,7 +224,7 @@ impl<'a> LowerCtx<'a> {
         }
     }
 
-    fn lower_pat(
+    pub fn lower_pat(
         &mut self,
         pat: ast::PatternId<'a>,
         s: Value,
@@ -443,7 +271,7 @@ impl<'a> LowerCtx<'a> {
                 }
                 _ => todo!(),
             },
-            ast::PatternData::Var { name, is_mut } => {
+            ast::PatternData::Var { name, .. } => {
                 // let s = match s {
                 //     Value::Unit => s,
                 //     Value::Int(_) => {

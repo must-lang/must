@@ -1,9 +1,9 @@
 use ariadne::Source;
 use salsa::DatabaseImpl;
 
-use crate::{diagnostic::Diagnostic, parser, queries, vm};
+use crate::{bytecode, diagnostic::Diagnostic, parser, queries, vm};
 
-pub fn compile_prog(filename: String) -> Result<vm::ir::Prog, usize> {
+pub fn compile_prog(filename: String) -> Result<bytecode::ir::Prog, usize> {
     let text = std::fs::read_to_string(&filename).unwrap();
     let db = &DatabaseImpl::new();
     let source = parser::Source::new(db, text.clone());
@@ -19,7 +19,7 @@ pub fn compile_prog(filename: String) -> Result<vm::ir::Prog, usize> {
     if let Some((_, prog)) = result
         && err_count == 0
     {
-        Ok(vm::lower::compile(db, prog))
+        Ok(bytecode::compile(db, prog))
     } else {
         Err(err_count)
     }

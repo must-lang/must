@@ -1,4 +1,7 @@
+use crate::bytecode::ir;
+use crate::bytecode::place::Place;
 use std::collections::HashMap;
+use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Prog {
@@ -115,7 +118,35 @@ impl IrBuilder {
     }
 }
 
-use std::fmt;
+impl ir::IrBuilder {
+    pub fn load_from_place(&mut self, place: Place) -> ir::Reg {
+        match place {
+            Place::DynamicPtr { base, offset } => {
+                let reg = self.new_reg();
+                self.push_instr(ir::Inst::Load(reg, base, offset));
+                reg
+            }
+            Place::Stack { slot, offset } => {
+                let reg = self.new_reg();
+                self.push_instr(ir::Inst::StackLoad(reg, slot, offset));
+                reg
+            }
+            Place::Reg(reg) => reg,
+        }
+    }
+
+    pub fn store_to_place(&mut self, dest: Place, reg: ir::Reg) {
+        match dest {
+            Place::DynamicPtr { base, offset } => {
+                self.push_instr(ir::Inst::Store(base, offset, reg))
+            }
+            Place::Stack { slot, offset } => {
+                self.push_instr(ir::Inst::StackStore(slot, offset, reg))
+            }
+            Place::Reg(reg_dest) => self.push_instr(ir::Inst::Assign(reg_dest, reg)),
+        }
+    }
+}
 
 impl fmt::Display for Prog {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

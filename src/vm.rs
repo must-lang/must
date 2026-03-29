@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
-pub mod ir;
-pub mod lower;
+use crate::bytecode::ir;
 
 pub fn run(prog: ir::Prog) -> Value {
     let mut vm = VM {

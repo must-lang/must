@@ -6,9 +6,9 @@ pub fn get_size(tp: &SType) -> usize {
         SType::Int => 1,
         SType::Tuple(stypes) => stypes.iter().map(|tp| get_size(tp)).sum(),
         SType::Bool => 1,
-        SType::UnifVar(unif_var) => panic!(),
+        SType::UnifVar(_) => panic!(),
         SType::Array(n, stype) => n * get_size(stype),
-        SType::Fn(stypes, stype) => todo!(),
-        SType::Ptr { tp, is_mut } => 1,
+        SType::Fn(_, _) => 1,
+        SType::Ptr { .. } => 1,
     }
 }
