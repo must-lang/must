@@ -1,9 +1,9 @@
 use ariadne::Source;
 use salsa::DatabaseImpl;
 
-use crate::{diagnostic::Diagnostic, eval, ir, parser, queries};
+use crate::{bytecode, diagnostic::Diagnostic, parser, queries, vm};
 
-pub fn run(filename: String) {
+pub fn compile_prog(filename: String) -> Result<bytecode::ir::Prog, usize> {
     let text = std::fs::read_to_string(&filename).unwrap();
     let db = &DatabaseImpl::new();
     let source = parser::Source::new(db, text.clone());
@@ -19,10 +19,20 @@ pub fn run(filename: String) {
     if let Some((_, prog)) = result
         && err_count == 0
     {
-        let prog = ir::compile(db, prog);
-        let v = eval::eval(prog);
-        println!("Program evaluated to: {:#?}", v);
+        Ok(bytecode::compile(db, prog))
     } else {
-        eprintln!("Errors occured. Compilation aborted.")
+        Err(err_count)
+    }
+}
+
+pub fn run(filename: String) {
+    match compile_prog(filename) {
+        Ok(prog) => {
+            let v = vm::run(prog);
+            println!("Program evaluated to: {:#?}", v);
+        }
+        Err(n) => {
+            eprintln!("{n} error occured. Compilation aborted")
+        }
     }
 }

@@ -10,6 +10,8 @@ enum Cfg {
     },
     /// Run a file.
     Run { file_name: String },
+    /// Print bytecode.
+    Print { file_name: String },
 }
 
 #[tokio::main]
@@ -18,5 +20,12 @@ async fn main() {
     match cfg {
         Cfg::Lsp { .. } => must::run_lsp().await,
         Cfg::Run { file_name } => must::run_pipeline(file_name),
+        Cfg::Print { file_name } => {
+            if let Ok(prog) = must::compile_prog(file_name) {
+                println!("{prog}");
+            } else {
+                eprintln!("Errors occured, compilation aborted.")
+            }
+        }
     }
 }

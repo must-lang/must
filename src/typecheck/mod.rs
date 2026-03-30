@@ -151,7 +151,8 @@ impl<'db> InferenceCtx<'db> {
                 for (x, tp, is_mut) in bindings {
                     self.extend(x, tp, is_mut);
                 }
-                self.check_expr(e2, exp, exp_mut)
+                self.check_expr(e2, exp, exp_mut);
+                self.type_map.insert(e, exp.clone());
             }
             _ => {
                 let (got, m) = self.infer_expr(e);
