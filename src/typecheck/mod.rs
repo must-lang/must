@@ -10,13 +10,20 @@ mod inference;
 
 use crate::{
     diagnostic::Diagnostic,
-    parser::ast::{self, ExprId},
+    parser::ast::{self, ExprId, FnDef},
     typecheck::inference::{InferenceCtx, Type, TypeView, UnifVar},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub struct InferenceResult<'db> {
     pub types: HashMap<ExprId<'db>, SType>,
+    pub signatures: HashMap<FnDef<'db>, FnSignature>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+pub struct FnSignature {
+    pub args: Vec<SType>,
+    pub ret: SType,
 }
 
 #[salsa::tracked(debug)]
@@ -45,33 +52,36 @@ pub fn check_file<'db>(db: &'db dyn Database, sf: ast::File<'db>) -> InferenceRe
     for def in sf.defs(db) {
         match def {
             ast::Def::FnDef(fn_def) => {
-                let tp = parse_fn_type(db, *fn_def);
+                let (args, ret) = parse_fn_type(db, *fn_def);
                 let name = fn_def.name(db).text(db).clone();
-                types.insert(name, tp);
+                types.insert(name, Type::fun(args, ret));
             }
         }
     }
     let def_idx = DefMap::new(db, types);
     let mut types: HashMap<ExprId<'db>, _> = HashMap::new();
+    let mut signatures: HashMap<FnDef<'db>, _> = HashMap::new();
     for def in sf.defs(db) {
         match def {
             ast::Def::FnDef(fn_def) => {
-                types.extend(check_fn(db, *fn_def, def_idx).types);
+                let (tps, sig) = check_fn(db, *fn_def, def_idx);
+                types.extend(tps);
+                signatures.insert(*fn_def, sig);
             }
         }
     }
-    InferenceResult { types }
+    InferenceResult { types, signatures }
 }
 
 #[salsa::tracked]
-fn parse_fn_type<'db>(db: &'db dyn Database, fn_def: ast::FnDef<'db>) -> Type {
+fn parse_fn_type<'db>(db: &'db dyn Database, fn_def: ast::FnDef<'db>) -> (Vec<Type>, Type) {
     let args = fn_def
         .args(db)
         .iter()
         .map(|(_, tp)| parse_type(db, *tp))
         .collect();
     let ret = parse_type(db, fn_def.ret_type(db));
-    Type::fun(args, ret)
+    (args, ret)
 }
 
 #[salsa::tracked]
@@ -97,7 +107,7 @@ pub fn check_fn<'db>(
     db: &'db dyn Database,
     f: ast::FnDef<'db>,
     def_idx: DefMap<'db>,
-) -> InferenceResult<'db> {
+) -> (HashMap<ExprId<'db>, SType>, FnSignature) {
     let mut ctx = InferenceCtx::new(db, def_idx);
     for (pat, tp) in f.args(db) {
         let tp = parse_type(db, tp);
@@ -105,22 +115,32 @@ pub fn check_fn<'db>(
             ctx.extend(name, tp, is_mut);
         }
     }
-    let exp = parse_type(db, f.ret_type(db));
+    let ret = parse_type(db, f.ret_type(db));
+    let args = f
+        .args(db)
+        .iter()
+        .map(|(_, tp)| ctx.seal_type(parse_type(db, *tp)))
+        .collect();
     if let Some(body) = f.body(db) {
-        ctx.check_expr(body, &exp, false);
+        ctx.check_expr(body, &ret, false);
     }
-    ctx.finish()
+    let sig = FnSignature {
+        args,
+        ret: ctx.seal_type(ret),
+    };
+    let types = ctx.finish();
+    (types, sig)
 }
 
 impl<'db> InferenceCtx<'db> {
-    fn finish(mut self) -> InferenceResult<'db> {
+    fn finish(mut self) -> HashMap<ExprId<'db>, SType> {
         let types = self
             .type_map
             .clone()
             .into_iter()
             .map(|(id, tp)| (id, self.seal_type(tp)))
             .collect();
-        InferenceResult { types }
+        types
     }
 
     fn seal_type(&mut self, tp: Type) -> SType {

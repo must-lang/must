@@ -126,7 +126,7 @@ impl<'a> VM<'a> {
                     ir::Inst::AddImm(reg, reg1, n) => match regs[reg1.0] {
                         Value::Int(m) => regs[reg.0] = Value::Int(n + m),
                         Value::Ptr(m) => regs[reg.0] = Value::Ptr(n + m),
-                        _ => panic!(),
+                        _ => panic!("{:?}", regs[reg1.0]),
                     },
                     ir::Inst::CmpLe(reg, reg1, reg2) => {
                         regs[reg.0] = if regs[reg1.0] <= regs[reg2.0] {

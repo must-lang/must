@@ -28,18 +28,42 @@ impl<'a> LowerCtx<'a> {
                 v
             }
             ast::ExprData::FnCall(name, args) => {
-                let vals: Vec<_> = args
+                let mut vals: Vec<_> = args
                     .iter()
-                    .map(|e| self.lower_value(*e, None).load_scalar(self.builder))
-                    // Unlike builtin NO rev here.
+                    .map(|e| {
+                        let arg_size = get_size(self.types.get(e).unwrap());
+                        let val = self.lower_value(*e, None);
+
+                        if arg_size == 1 {
+                            // Scalars fit in a register
+                            val.load_scalar(self.builder)
+                        } else {
+                            // Aggregates must be passed by pointer
+                            match val {
+                                Value::LVal(place) => place.as_addr(self.builder),
+                                _ => panic!("Expected aggregate argument to be an LVal"),
+                            }
+                        }
+                    })
                     .collect();
                 let reg = self.builder.new_reg();
+                let place = dest.unwrap_or_else(|| {
+                    if size == 1 {
+                        Place::Reg(reg)
+                    } else {
+                        Place::Stack {
+                            slot: self.builder.new_stack_slot(size),
+                            offset: 0,
+                        }
+                    }
+                });
+                if size > 1 {
+                    vals.insert(0, place.as_addr(self.builder))
+                }
                 self.builder
                     .push_instr(ir::Inst::FnCall(reg, name.text(self.db).clone(), vals));
-                let v = Value::LVal(Place::Reg(reg));
-                if let Some(dest) = dest {
-                    v.write_to(dest, size, self.builder);
-                };
+                let v = Value::LVal(place);
+                v.write_to(place, size, self.builder);
                 v
             }
             ast::ExprData::Error => panic!("cannot lower code with errors"),
@@ -224,18 +248,14 @@ impl<'a> LowerCtx<'a> {
                 self.builder.switch_to_block(success);
             }
             ast::PatternData::Tuple(pats) => match s {
-                Value::LVal(Place::Stack { slot, mut offset }) => {
+                Value::LVal(place) => {
+                    let mut offset = 0;
                     let tps = match tp {
                         SType::Tuple(tps) => tps,
                         _ => panic!("{:?}", tp),
                     };
                     for (pat, tp) in pats.into_iter().zip(tps) {
-                        self.lower_pat(
-                            pat,
-                            Value::LVal(Place::Stack { slot, offset }),
-                            fail_block,
-                            tp,
-                        );
+                        self.lower_pat(pat, Value::LVal(place.add_offset(offset)), fail_block, tp);
                         offset += get_size(tp);
                     }
                 }

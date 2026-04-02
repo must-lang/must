@@ -1,0 +1,11 @@
+
+fn main() -> int {
+    let mut x = [6, 2, 4, 5, 9] in
+    let (y, z) = getelems(x) in
+    z + x[0] # this should be 15
+}
+
+fn getelems(mut arr: [5]int) -> (int, int) {
+    arr[0] := 42; # beacuse this shouldn't mutate the original array
+    (arr[2], arr[4])
+}

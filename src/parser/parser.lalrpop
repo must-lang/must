@@ -73,6 +73,7 @@ TypeExpr: TypeExprId<'db> = {
 TypeExprData: TypeExprData<'db> = {
     "int" => TypeExprData::Int,
     "(" ")" => TypeExprData::Tuple(vec![]),
+    "(" <tps: TwoOrMore<TypeExpr>> ")" => TypeExprData::Tuple(tps),
     "bool" => TypeExprData::Bool,
     "*" <tp: TypeExpr> => TypeExprData::Ptr { tp, is_mut: false },
     "*" "mut" <tp: TypeExpr> => TypeExprData::Ptr { tp, is_mut: true },
