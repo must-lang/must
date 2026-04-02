@@ -56,7 +56,6 @@ pub enum Inst {
     Store(Reg, usize, Reg), // *(r1 + offset) <- r2
 
     MemCopy { src: Reg, dst: Reg, len: usize },
-    PrintNum(Reg), // Temporary for debugging
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -212,9 +211,6 @@ impl fmt::Display for Inst {
             Inst::MemCopy { src, dst, len } => {
                 write!(f, "memcpy dst=r{}, src=r{}, len={}", dst.0, src.0, len)
             }
-
-            // --- Builtins ---
-            Inst::PrintNum(src) => write!(f, "print r{}", src.0),
         }
     }
 }

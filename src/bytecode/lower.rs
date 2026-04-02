@@ -27,47 +27,6 @@ impl<'a> LowerCtx<'a> {
                 }
                 v
             }
-            ast::ExprData::Builtin(name, args) => {
-                let mut vals: Vec<_> = args
-                    .iter()
-                    .map(|e| self.lower_value(*e, None))
-                    .rev() // Rev: because i will be popping arguments from the back.
-                    .collect();
-
-                let v = match name.text(self.db).as_str() {
-                    "intadd" => {
-                        let x = vals.pop().unwrap().load_scalar(self.builder);
-                        let y = vals.pop().unwrap().load_scalar(self.builder);
-                        let reg = self.builder.new_reg();
-                        self.builder.push_instr(ir::Inst::Add(reg, x, y));
-                        Value::LVal(Place::Reg(reg))
-                    }
-                    "intsub" => {
-                        let x = vals.pop().unwrap().load_scalar(self.builder);
-                        let y = vals.pop().unwrap().load_scalar(self.builder);
-                        let reg = self.builder.new_reg();
-                        self.builder.push_instr(ir::Inst::Sub(reg, x, y));
-                        Value::LVal(Place::Reg(reg))
-                    }
-                    "intle" => {
-                        let x = vals.pop().unwrap().load_scalar(self.builder);
-                        let y = vals.pop().unwrap().load_scalar(self.builder);
-                        let reg = self.builder.new_reg();
-                        self.builder.push_instr(ir::Inst::CmpLe(reg, x, y));
-                        Value::LVal(Place::Reg(reg))
-                    }
-                    "printnum" => {
-                        let x = vals.pop().unwrap().load_scalar(self.builder);
-                        self.builder.push_instr(ir::Inst::PrintNum(x));
-                        Value::Unit
-                    }
-                    _ => panic!("runtime error: unknown builtin function"),
-                };
-                if let Some(dest) = dest {
-                    v.write_to(dest, size, self.builder);
-                };
-                v
-            }
             ast::ExprData::FnCall(name, args) => {
                 let vals: Vec<_> = args
                     .iter()

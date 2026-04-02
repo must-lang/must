@@ -12,6 +12,4 @@ fn main() -> int {
     }
 }
 
-fn add(x: int, y: int) -> int {
-    @intadd(x, y)
-}
+extern fn add(x: int, y: int) -> int;

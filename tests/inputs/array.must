@@ -38,19 +38,10 @@ fn swap(x: *mut int, y: *mut int) -> () {
     ()
 }
 
-fn printnum(x: int) -> () {
-    @printnum(x)
-}
+extern fn printnum(x: int) -> ();
 
+extern fn add(x: int, y: int) -> int;
 
-fn add(x: int, y: int) -> int {
-    @intadd(x, y)
-}
+extern fn sub(x: int, y: int) -> int;
 
-fn sub(x: int, y: int) -> int {
-    @intsub(x, y)
-}
-
-fn le(x: int, y: int) -> bool {
-    @intle(x, y)
-}
+extern fn le(x: int, y: int) -> bool;

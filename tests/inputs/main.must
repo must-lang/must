@@ -33,14 +33,8 @@ fn swap(x: *mut int, y: *mut int) -> () {
     ()
 }
 
-fn add(x: int, y: int) -> int {
-    @intadd(x, y)
-}
+extern fn printnum(x: int) -> ();
 
-fn le(x: int, y: int) -> bool {
-    @intle(x, y)
-}
+extern fn add(x: int, y: int) -> int;
 
-fn printnum(x: int) -> () {
-    @printnum(x)
-}
+extern fn le(x: int, y: int) -> bool;

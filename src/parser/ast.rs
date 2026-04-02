@@ -20,13 +20,14 @@ pub enum Def<'db> {
 
 #[salsa::tracked(debug)]
 pub struct FnDef<'db> {
+    pub ext: bool,
     pub name: Ident<'db>,
     #[tracked]
     pub args: Vec<(PatternId<'db>, TypeExprId<'db>)>,
     #[tracked]
     pub ret_type: TypeExprId<'db>,
     #[tracked]
-    pub body: ExprId<'db>,
+    pub body: Option<ExprId<'db>>,
 }
 
 #[salsa::interned(debug)]
@@ -57,8 +58,6 @@ pub enum ExprData<'db> {
     Index(ExprId<'db>, ExprId<'db>),
 
     Match(ExprId<'db>, Vec<(PatternId<'db>, ExprId<'db>)>),
-
-    Builtin(Ident<'db>, Vec<ExprId<'db>>),
 }
 
 #[salsa::interned(debug)]

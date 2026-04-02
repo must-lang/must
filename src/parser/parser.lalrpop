@@ -44,7 +44,10 @@ Def: Def<'db> = {
 
 FnDef: FnDef<'db> = {
     "fn" <name: Ident> "(" <args: CommaSep<FnArg>> ")" "->" <ret_type: TypeExpr> "{" <body: Expr> "}" => {
-        FnDef::new(db, name, args, ret_type, body)
+        FnDef::new(db, false, name, args, ret_type, Some(body))
+    },
+    "extern" "fn" <name: Ident> "(" <args: CommaSep<FnArg>> ")" "->" <ret_type: TypeExpr> ";" => {
+        FnDef::new(db, true, name, args, ret_type, None)
     }
 }
 
@@ -116,7 +119,6 @@ Expr0Data: ExprData<'db> = {
     "false" => ExprData::False,
     Num => ExprData::Num(<>),
     <s: Ident> => ExprData::Var(s),
-    "@" <s: Ident> "(" <args: CommaSep<Expr>> ")" => ExprData::Builtin(s, args),
     <s: Ident> "(" <args: CommaSep<Expr>> ")" => ExprData::FnCall(s, args),
     
     ! => {

@@ -106,7 +106,9 @@ pub fn check_fn<'db>(
         }
     }
     let exp = parse_type(db, f.ret_type(db));
-    ctx.check_expr(f.body(db), &exp, false);
+    if let Some(body) = f.body(db) {
+        ctx.check_expr(body, &exp, false);
+    }
     ctx.finish()
 }
 
@@ -225,12 +227,6 @@ impl<'db> InferenceCtx<'db> {
                     self.extend(x, tp, is_mut);
                 }
                 self.infer_expr(e2)
-            }
-            ast::ExprData::Builtin(_, exprs) => {
-                for e in exprs {
-                    self.infer_expr(e);
-                }
-                (self.new_uvar(), true)
             }
             ast::ExprData::True | ast::ExprData::False => (Type::bool(), false),
             ast::ExprData::Match(expr, items) => {
