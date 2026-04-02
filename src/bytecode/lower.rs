@@ -172,6 +172,25 @@ impl<'a> LowerCtx<'a> {
                 self.lower_value(e1, None);
                 self.lower_value(e2, dest)
             }
+            ast::ExprData::BinOp(op, e1, e2) => {
+                let v1 = self.lower_value(e1, None).load_scalar(self.builder);
+                let v2 = self.lower_value(e2, None).load_scalar(self.builder);
+                let reg = self.builder.new_reg();
+                let inst = match op {
+                    ast::Op::Add => ir::Inst::Add(reg, v1, v2),
+                    ast::Op::Sub => ir::Inst::Sub(reg, v1, v2),
+                    ast::Op::Mul => ir::Inst::Mul(reg, v1, v2),
+                    ast::Op::Div => todo!(),
+                    ast::Op::Le => ir::Inst::CmpLe(reg, v1, v2),
+                    ast::Op::Eq => ir::Inst::CmpEq(reg, v1, v2),
+                };
+                self.builder.push_instr(inst);
+                let v = Value::LVal(Place::Reg(reg));
+                if let Some(dest) = dest {
+                    v.write_to(dest, size, self.builder);
+                }
+                v
+            }
         }
     }
 

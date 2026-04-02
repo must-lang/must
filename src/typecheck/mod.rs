@@ -291,6 +291,15 @@ impl<'db> InferenceCtx<'db> {
                 self.infer_expr(e1);
                 self.infer_expr(e2)
             }
+            ast::ExprData::BinOp(op, e1, e2) => {
+                self.check_expr(e1, &Type::int(), false);
+                self.check_expr(e2, &Type::int(), false);
+                let tp = match op {
+                    ast::Op::Add | ast::Op::Sub | ast::Op::Mul | ast::Op::Div => Type::int(),
+                    ast::Op::Le | ast::Op::Eq => Type::bool(),
+                };
+                (tp, false)
+            }
         };
         self.type_map.insert(e, tp.0.clone());
         tp

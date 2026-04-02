@@ -30,29 +30,6 @@ struct VM<'a> {
 impl<'a> VM<'a> {
     pub fn call_func_name(&mut self, name: &str, mut args: Vec<Value>) -> Value {
         match name {
-            "add" => {
-                let y = args.pop().unwrap();
-                let x = args.pop().unwrap();
-                match (x, y) {
-                    (Value::Int(a), Value::Int(b)) => Value::Int(a + b),
-                    (Value::Ptr(a), Value::Int(b)) => Value::Ptr(a + b),
-                    _ => panic!(),
-                }
-            }
-            "sub" => {
-                let y = args.pop().unwrap();
-                let x = args.pop().unwrap();
-                match (x, y) {
-                    (Value::Int(a), Value::Int(b)) => Value::Int(a - b),
-                    (Value::Ptr(a), Value::Int(b)) => Value::Ptr(a - b),
-                    _ => panic!(),
-                }
-            }
-            "le" => {
-                let y = args.pop().unwrap();
-                let x = args.pop().unwrap();
-                if x <= y { Value::True } else { Value::False }
-            }
             "printnum" => {
                 let x = args.pop().unwrap();
                 if let Value::Int(n) = x {

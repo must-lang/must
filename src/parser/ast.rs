@@ -58,6 +58,19 @@ pub enum ExprData<'db> {
     Index(ExprId<'db>, ExprId<'db>),
 
     Match(ExprId<'db>, Vec<(PatternId<'db>, ExprId<'db>)>),
+
+    BinOp(Op, ExprId<'db>, ExprId<'db>),
+}
+
+#[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
+pub enum Op {
+    Add,
+    Sub,
+    Mul,
+    Div,
+
+    Le,
+    Eq,
 }
 
 #[salsa::interned(debug)]

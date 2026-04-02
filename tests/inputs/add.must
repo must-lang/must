@@ -1,9 +1,8 @@
 
-
 fn main() -> int {
     let mut v = 12 in
     v := 42;
-    let tupl = (13, 165, add(v, 10)) in
+    let tupl = (13, 165, v + 10) in
     let rev = match tupl {
         (x, _, z) => (z, x),
     } in
@@ -11,5 +10,3 @@ fn main() -> int {
         (x, y) => x
     }
 }
-
-extern fn add(x: int, y: int) -> int;

@@ -8,31 +8,31 @@ fn main() -> int {
 }
 
 fn sort(arr: *mut [5]int, id: int) -> () {
-    match le(id, 4) {
+    match id <= 4 {
         false => (),
         true =>
             insert(arr, id);
-            sort(arr, add(id, 1)),
+            sort(arr, id + 1),
     }
 }
 
 fn printarr(arr: *[5]int, id: int) -> () {
-    match le(id, 4) {
+    match id <= 4 {
         false => (),
         true =>
             printnum((*arr)[id]);
-            printarr(arr, add(id, 1)),
+            printarr(arr, id + 1),
     }
 }
 
 fn insert(mut arr: *mut [5]int, j: int) -> () {
-    match le(j, 0) {
+    match j <= 0 {
         true => (),
-        false => match le((*arr)[sub(j, 1)], (*arr)[j]) {
+        false => match (*arr)[j - 1] <= (*arr)[j] {
             true => (),
             false =>
-                swap(&(*arr)[sub(j, 1)], &(*arr)[j]);
-                insert(arr, sub(j, 1))
+                swap(&(*arr)[j - 1], &(*arr)[j]);
+                insert(arr, j - 1)
         }
     }
 }
@@ -44,9 +44,3 @@ fn swap(x: *mut int, y: *mut int) -> () {
 }
 
 extern fn printnum(x: int) -> ();
-
-extern fn add(x: int, y: int) -> int;
-
-extern fn sub(x: int, y: int) -> int;
-
-extern fn le(x: int, y: int) -> bool;

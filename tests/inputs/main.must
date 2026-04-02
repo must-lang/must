@@ -6,8 +6,8 @@ fn main() -> () {
 }
 
 fn loop(x: int) -> () {
-    match le(x, 10) {
-        true => printnum(x); loop(add(x, 1)),
+    match x <= 10 {
+        true => printnum(x); loop(x + 1),
         false => ()
     }
 }
@@ -33,7 +33,3 @@ fn swap(x: *mut int, y: *mut int) -> () {
 }
 
 extern fn printnum(x: int) -> ();
-
-extern fn add(x: int, y: int) -> int;
-
-extern fn le(x: int, y: int) -> bool;
