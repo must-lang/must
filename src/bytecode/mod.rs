@@ -20,6 +20,11 @@ pub fn compile<'db>(db: &'db dyn Database, prog: ast::File<'db>) -> ir::Prog {
     for def in prog.defs(db) {
         match def {
             ast::Def::FnDef(fn_def) => {
+                if let None = fn_def.body(db)
+                    && fn_def.ext(db)
+                {
+                    continue;
+                }
                 let (name, func) = lower_function(db, *fn_def, &types);
                 funcs.insert(name, func);
             }
@@ -49,7 +54,7 @@ pub fn lower_function<'db>(
     }
 
     let res_reg = ctx.builder.new_reg();
-    ctx.lower_value(ast_fn.body(db), Some(Place::Reg(res_reg)));
+    ctx.lower_value(ast_fn.body(db).unwrap(), Some(Place::Reg(res_reg)));
 
     builder.blocks[builder.current_block.0].terminator = ir::Terminator::Return(res_reg);
 

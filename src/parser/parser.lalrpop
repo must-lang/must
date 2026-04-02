@@ -44,7 +44,10 @@ Def: Def<'db> = {
 
 FnDef: FnDef<'db> = {
     "fn" <name: Ident> "(" <args: CommaSep<FnArg>> ")" "->" <ret_type: TypeExpr> "{" <body: Expr> "}" => {
-        FnDef::new(db, name, args, ret_type, body)
+        FnDef::new(db, false, name, args, ret_type, Some(body))
+    },
+    "extern" "fn" <name: Ident> "(" <args: CommaSep<FnArg>> ")" "->" <ret_type: TypeExpr> ";" => {
+        FnDef::new(db, true, name, args, ret_type, None)
     }
 }
 
@@ -87,21 +90,47 @@ SpannedExpr<Data>: ExprId<'db> = {
 };
 
 Expr = SpannedExpr<ExprData>;
-Expr1 = SpannedExpr<Expr1Data>;
+Expr30 = SpannedExpr<Expr30Data>;
+Expr20 = SpannedExpr<Expr20Data>;
+Expr12 = SpannedExpr<Expr12Data>;
+Expr11 = SpannedExpr<Expr11Data>;
+Expr10 = SpannedExpr<Expr10Data>;
 Expr0 = SpannedExpr<Expr0Data>;
 
 ExprData: ExprData<'db> = {
     "let" <pat: Pattern> "=" <e1: Expr> "in" <e2: Expr> => ExprData::Let(pat, e1, e2),
     "match" <e: Expr> "{" <cls: CommaSep<MatchCls>> "}" => ExprData::Match(e, cls),
-    Expr1Data
+    <e1: Expr30> ";" <e2: Expr> => ExprData::Seq(e1, e2),
+    Expr30Data
 }
 
-Expr1Data: ExprData<'db> = {
-    <e1: Expr0> ":=" <e2: Expr1> => ExprData::Assign(e1, e2),
-    <e1: Expr0> "<-" <e2: Expr1> => ExprData::Store(e1, e2),
-    "*" <e: Expr> => ExprData::Load(e),
-    "&" <e: Expr> => ExprData::AddressOf(e),
-    Expr0Data
+Expr30Data: ExprData<'db> = {
+    <e1: Expr20> ":=" <e2: Expr20> => ExprData::Assign(e1, e2),
+    Expr20Data
+}
+
+Expr20Data: ExprData<'db> = {
+    "*" <e: Expr20> => ExprData::Deref(e),
+    "&" <e: Expr20> => ExprData::AddressOf(e),
+    Expr12Data,
+}
+
+Expr12Data: ExprData<'db> = {
+    <e1: Expr12> "<=" <e2: Expr11> => ExprData::BinOp(Op::Le, e1, e2),
+    <e1: Expr12> "==" <e2: Expr11> => ExprData::BinOp(Op::Eq, e1, e2),
+    Expr11Data,
+}
+
+Expr11Data: ExprData<'db> = {
+    <e1: Expr11> "+" <e2: Expr10> => ExprData::BinOp(Op::Add, e1, e2),
+    <e1: Expr11> "-" <e2: Expr10> => ExprData::BinOp(Op::Sub, e1, e2),
+    Expr10Data,
+}
+
+Expr10Data: ExprData<'db> = {
+    <e1: Expr10> "*" <e2: Expr0> => ExprData::BinOp(Op::Mul, e1, e2),
+    <e1: Expr10> "/" <e2: Expr0> => ExprData::BinOp(Op::Div, e1, e2),
+    Expr0Data,
 }
 
 Expr0Data: ExprData<'db> = {
@@ -116,7 +145,6 @@ Expr0Data: ExprData<'db> = {
     "false" => ExprData::False,
     Num => ExprData::Num(<>),
     <s: Ident> => ExprData::Var(s),
-    "@" <s: Ident> "(" <args: CommaSep<Expr>> ")" => ExprData::Builtin(s, args),
     <s: Ident> "(" <args: CommaSep<Expr>> ")" => ExprData::FnCall(s, args),
     
     ! => {

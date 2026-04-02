@@ -20,13 +20,14 @@ pub enum Def<'db> {
 
 #[salsa::tracked(debug)]
 pub struct FnDef<'db> {
+    pub ext: bool,
     pub name: Ident<'db>,
     #[tracked]
     pub args: Vec<(PatternId<'db>, TypeExprId<'db>)>,
     #[tracked]
     pub ret_type: TypeExprId<'db>,
     #[tracked]
-    pub body: ExprId<'db>,
+    pub body: Option<ExprId<'db>>,
 }
 
 #[salsa::interned(debug)]
@@ -45,11 +46,11 @@ pub enum ExprData<'db> {
     Var(Ident<'db>),
     FnCall(Ident<'db>, Vec<ExprId<'db>>),
     Let(PatternId<'db>, ExprId<'db>, ExprId<'db>),
+    Seq(ExprId<'db>, ExprId<'db>),
     Assign(ExprId<'db>, ExprId<'db>),
 
     AddressOf(ExprId<'db>),
-    Load(ExprId<'db>),
-    Store(ExprId<'db>, ExprId<'db>),
+    Deref(ExprId<'db>),
 
     Tuple(Vec<ExprId<'db>>),
 
@@ -58,7 +59,18 @@ pub enum ExprData<'db> {
 
     Match(ExprId<'db>, Vec<(PatternId<'db>, ExprId<'db>)>),
 
-    Builtin(Ident<'db>, Vec<ExprId<'db>>),
+    BinOp(Op, ExprId<'db>, ExprId<'db>),
+}
+
+#[derive(Debug, Hash, Eq, PartialEq, Clone, salsa::Update)]
+pub enum Op {
+    Add,
+    Sub,
+    Mul,
+    Div,
+
+    Le,
+    Eq,
 }
 
 #[salsa::interned(debug)]

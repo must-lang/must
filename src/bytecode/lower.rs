@@ -27,47 +27,6 @@ impl<'a> LowerCtx<'a> {
                 }
                 v
             }
-            ast::ExprData::Builtin(name, args) => {
-                let mut vals: Vec<_> = args
-                    .iter()
-                    .map(|e| self.lower_value(*e, None))
-                    .rev() // Rev: because i will be popping arguments from the back.
-                    .collect();
-
-                let v = match name.text(self.db).as_str() {
-                    "intadd" => {
-                        let x = vals.pop().unwrap().load_scalar(self.builder);
-                        let y = vals.pop().unwrap().load_scalar(self.builder);
-                        let reg = self.builder.new_reg();
-                        self.builder.push_instr(ir::Inst::Add(reg, x, y));
-                        Value::LVal(Place::Reg(reg))
-                    }
-                    "intsub" => {
-                        let x = vals.pop().unwrap().load_scalar(self.builder);
-                        let y = vals.pop().unwrap().load_scalar(self.builder);
-                        let reg = self.builder.new_reg();
-                        self.builder.push_instr(ir::Inst::Sub(reg, x, y));
-                        Value::LVal(Place::Reg(reg))
-                    }
-                    "intle" => {
-                        let x = vals.pop().unwrap().load_scalar(self.builder);
-                        let y = vals.pop().unwrap().load_scalar(self.builder);
-                        let reg = self.builder.new_reg();
-                        self.builder.push_instr(ir::Inst::CmpLe(reg, x, y));
-                        Value::LVal(Place::Reg(reg))
-                    }
-                    "printnum" => {
-                        let x = vals.pop().unwrap().load_scalar(self.builder);
-                        self.builder.push_instr(ir::Inst::PrintNum(x));
-                        Value::Unit
-                    }
-                    _ => panic!("runtime error: unknown builtin function"),
-                };
-                if let Some(dest) = dest {
-                    v.write_to(dest, size, self.builder);
-                };
-                v
-            }
             ast::ExprData::FnCall(name, args) => {
                 let vals: Vec<_> = args
                     .iter()
@@ -132,7 +91,7 @@ impl<'a> LowerCtx<'a> {
                 }
                 v
             }
-            ast::ExprData::Load(expr) => {
+            ast::ExprData::Deref(expr) => {
                 let ptr = self.lower_value(expr, None).load_scalar(self.builder);
                 let v = Value::LVal(Place::DynamicPtr {
                     base: ptr,
@@ -142,18 +101,6 @@ impl<'a> LowerCtx<'a> {
                     v.write_to(dest, size, self.builder);
                 }
                 v
-            }
-            ast::ExprData::Store(expr1, expr2) => {
-                let ptr_reg = self.lower_value(expr1, None).load_scalar(self.builder);
-
-                let dest_place = Place::DynamicPtr {
-                    base: ptr_reg,
-                    offset: 0,
-                };
-
-                self.lower_value(expr2, Some(dest_place));
-
-                Value::Unit
             }
             ast::ExprData::Array(exprs) | ast::ExprData::Tuple(exprs) => {
                 let place = dest.unwrap_or_else(|| Place::Stack {
@@ -220,6 +167,29 @@ impl<'a> LowerCtx<'a> {
 
                 self.builder.switch_to_block(end_block);
                 Value::LVal(place)
+            }
+            ast::ExprData::Seq(e1, e2) => {
+                self.lower_value(e1, None);
+                self.lower_value(e2, dest)
+            }
+            ast::ExprData::BinOp(op, e1, e2) => {
+                let v1 = self.lower_value(e1, None).load_scalar(self.builder);
+                let v2 = self.lower_value(e2, None).load_scalar(self.builder);
+                let reg = self.builder.new_reg();
+                let inst = match op {
+                    ast::Op::Add => ir::Inst::Add(reg, v1, v2),
+                    ast::Op::Sub => ir::Inst::Sub(reg, v1, v2),
+                    ast::Op::Mul => ir::Inst::Mul(reg, v1, v2),
+                    ast::Op::Div => todo!(),
+                    ast::Op::Le => ir::Inst::CmpLe(reg, v1, v2),
+                    ast::Op::Eq => ir::Inst::CmpEq(reg, v1, v2),
+                };
+                self.builder.push_instr(inst);
+                let v = Value::LVal(Place::Reg(reg));
+                if let Some(dest) = dest {
+                    v.write_to(dest, size, self.builder);
+                }
+                v
             }
         }
     }

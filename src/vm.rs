@@ -9,7 +9,7 @@ pub fn run(prog: ir::Prog) -> Value {
         stack_ptr: 0,
     };
 
-    vm.call_func("main", vec![])
+    vm.call_func_name("main", vec![])
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -28,8 +28,25 @@ struct VM<'a> {
 }
 
 impl<'a> VM<'a> {
-    pub fn call_func(&mut self, name: &str, args: Vec<Value>) -> Value {
-        let func = self.funcs.get(name).unwrap();
+    pub fn call_func_name(&mut self, name: &str, mut args: Vec<Value>) -> Value {
+        match name {
+            "printnum" => {
+                let x = args.pop().unwrap();
+                if let Value::Int(n) = x {
+                    println!("output: {}", n)
+                } else {
+                    panic!()
+                }
+                Value::Null
+            }
+            _ => {
+                let func = self.funcs.get(name).unwrap();
+                self.call_func(func, args)
+            }
+        }
+    }
+
+    pub fn call_func(&mut self, func: &ir::Func, args: Vec<Value>) -> Value {
         let mut next_block_id = 0;
         let mut regs: Vec<Value> = vec![Value::Null; func.register_count];
 
@@ -61,7 +78,7 @@ impl<'a> VM<'a> {
                     ir::Inst::Assign(reg, reg1) => regs[reg.0] = regs[reg1.0],
                     ir::Inst::FnCall(reg, name, args) => {
                         let args = args.iter().map(|id| regs[id.0]).collect();
-                        regs[reg.0] = self.call_func(name, args);
+                        regs[reg.0] = self.call_func_name(name, args);
                     }
                     ir::Inst::LoadBool(reg, true) => regs[reg.0] = Value::True,
                     ir::Inst::LoadBool(reg, false) => regs[reg.0] = Value::False,
@@ -116,13 +133,6 @@ impl<'a> VM<'a> {
                             Value::True
                         } else {
                             Value::False
-                        }
-                    }
-                    ir::Inst::PrintNum(reg) => {
-                        if let Value::Int(n) = regs[reg.0] {
-                            println!("output: {}", n)
-                        } else {
-                            panic!()
                         }
                     }
                     ir::Inst::Mul(reg, reg1, reg2) => match (regs[reg1.0], regs[reg2.0]) {

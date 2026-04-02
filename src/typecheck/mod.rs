@@ -106,7 +106,9 @@ pub fn check_fn<'db>(
         }
     }
     let exp = parse_type(db, f.ret_type(db));
-    ctx.check_expr(f.body(db), &exp, false);
+    if let Some(body) = f.body(db) {
+        ctx.check_expr(body, &exp, false);
+    }
     ctx.finish()
 }
 
@@ -226,12 +228,6 @@ impl<'db> InferenceCtx<'db> {
                 }
                 self.infer_expr(e2)
             }
-            ast::ExprData::Builtin(_, exprs) => {
-                for e in exprs {
-                    self.infer_expr(e);
-                }
-                (self.new_uvar(), true)
-            }
             ast::ExprData::True | ast::ExprData::False => (Type::bool(), false),
             ast::ExprData::Match(expr, items) => {
                 let (pat_tp, _) = self.infer_expr(expr);
@@ -261,7 +257,7 @@ impl<'db> InferenceCtx<'db> {
                 let (tp, is_mut) = self.infer_expr(e);
                 (Type::ptr(tp, is_mut), false)
             }
-            ast::ExprData::Load(e) => {
+            ast::ExprData::Deref(e) => {
                 let (tp, _) = self.infer_expr(e);
                 match self.view(&tp) {
                     TypeView::Ptr { tp, is_mut } => (tp, is_mut),
@@ -270,13 +266,6 @@ impl<'db> InferenceCtx<'db> {
                         (Type::error(), true)
                     }
                 }
-            }
-            ast::ExprData::Store(e1, e2) => {
-                let tp = self.new_uvar();
-                let ptr = Type::ptr(tp.clone(), true);
-                self.check_expr(e1, &ptr, false);
-                self.check_expr(e2, &tp, false);
-                (Type::unit(), false)
             }
             ast::ExprData::Array(exprs) => {
                 let size = exprs.len();
@@ -297,6 +286,19 @@ impl<'db> InferenceCtx<'db> {
                         (Type::error(), is_mut)
                     }
                 }
+            }
+            ast::ExprData::Seq(e1, e2) => {
+                self.infer_expr(e1);
+                self.infer_expr(e2)
+            }
+            ast::ExprData::BinOp(op, e1, e2) => {
+                self.check_expr(e1, &Type::int(), false);
+                self.check_expr(e2, &Type::int(), false);
+                let tp = match op {
+                    ast::Op::Add | ast::Op::Sub | ast::Op::Mul | ast::Op::Div => Type::int(),
+                    ast::Op::Le | ast::Op::Eq => Type::bool(),
+                };
+                (tp, false)
             }
         };
         self.type_map.insert(e, tp.0.clone());
