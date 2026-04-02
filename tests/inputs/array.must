@@ -33,8 +33,8 @@ fn insert(mut arr: *mut [5]int, j: int) -> () {
 
 fn swap(x: *mut int, y: *mut int) -> () {
     let tmp = *x in
-    let _ = x <- *y in
-    let _ = y <- tmp in
+    let _ = *x := *y in
+    let _ = *y := tmp in
     ()
 }
 

@@ -49,8 +49,7 @@ pub enum ExprData<'db> {
     Assign(ExprId<'db>, ExprId<'db>),
 
     AddressOf(ExprId<'db>),
-    Load(ExprId<'db>),
-    Store(ExprId<'db>, ExprId<'db>),
+    Deref(ExprId<'db>),
 
     Tuple(Vec<ExprId<'db>>),
 

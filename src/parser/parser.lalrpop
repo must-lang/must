@@ -96,14 +96,13 @@ Expr0 = SpannedExpr<Expr0Data>;
 ExprData: ExprData<'db> = {
     "let" <pat: Pattern> "=" <e1: Expr> "in" <e2: Expr> => ExprData::Let(pat, e1, e2),
     "match" <e: Expr> "{" <cls: CommaSep<MatchCls>> "}" => ExprData::Match(e, cls),
+    <e1: Expr1> ":=" <e2: Expr1> => ExprData::Assign(e1, e2),
     Expr1Data
 }
 
 Expr1Data: ExprData<'db> = {
-    <e1: Expr0> ":=" <e2: Expr1> => ExprData::Assign(e1, e2),
-    <e1: Expr0> "<-" <e2: Expr1> => ExprData::Store(e1, e2),
-    "*" <e: Expr> => ExprData::Load(e),
-    "&" <e: Expr> => ExprData::AddressOf(e),
+    "*" <e: Expr1> => ExprData::Deref(e),
+    "&" <e: Expr1> => ExprData::AddressOf(e),
     Expr0Data
 }
 

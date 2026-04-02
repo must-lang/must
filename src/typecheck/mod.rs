@@ -257,7 +257,7 @@ impl<'db> InferenceCtx<'db> {
                 let (tp, is_mut) = self.infer_expr(e);
                 (Type::ptr(tp, is_mut), false)
             }
-            ast::ExprData::Load(e) => {
+            ast::ExprData::Deref(e) => {
                 let (tp, _) = self.infer_expr(e);
                 match self.view(&tp) {
                     TypeView::Ptr { tp, is_mut } => (tp, is_mut),
@@ -266,13 +266,6 @@ impl<'db> InferenceCtx<'db> {
                         (Type::error(), true)
                     }
                 }
-            }
-            ast::ExprData::Store(e1, e2) => {
-                let tp = self.new_uvar();
-                let ptr = Type::ptr(tp.clone(), true);
-                self.check_expr(e1, &ptr, false);
-                self.check_expr(e2, &tp, false);
-                (Type::unit(), false)
             }
             ast::ExprData::Array(exprs) => {
                 let size = exprs.len();

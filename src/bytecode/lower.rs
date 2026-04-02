@@ -91,7 +91,7 @@ impl<'a> LowerCtx<'a> {
                 }
                 v
             }
-            ast::ExprData::Load(expr) => {
+            ast::ExprData::Deref(expr) => {
                 let ptr = self.lower_value(expr, None).load_scalar(self.builder);
                 let v = Value::LVal(Place::DynamicPtr {
                     base: ptr,
@@ -101,18 +101,6 @@ impl<'a> LowerCtx<'a> {
                     v.write_to(dest, size, self.builder);
                 }
                 v
-            }
-            ast::ExprData::Store(expr1, expr2) => {
-                let ptr_reg = self.lower_value(expr1, None).load_scalar(self.builder);
-
-                let dest_place = Place::DynamicPtr {
-                    base: ptr_reg,
-                    offset: 0,
-                };
-
-                self.lower_value(expr2, Some(dest_place));
-
-                Value::Unit
             }
             ast::ExprData::Array(exprs) | ast::ExprData::Tuple(exprs) => {
                 let place = dest.unwrap_or_else(|| Place::Stack {
