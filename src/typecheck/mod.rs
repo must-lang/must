@@ -18,6 +18,7 @@ use crate::{
 pub struct InferenceResult<'db> {
     pub types: HashMap<ExprId<'db>, SType>,
     pub signatures: HashMap<FnDef<'db>, FnSignature>,
+    pub coercions: HashMap<ExprId<'db>, Coercion>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
@@ -44,6 +45,13 @@ pub enum SType {
 
     Fn(Vec<SType>, Arc<SType>),
     Ptr { tp: Arc<SType>, is_mut: bool },
+    Slice { tp: Arc<SType>, is_mut: bool },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+pub enum Coercion {
+    /// Cast `*mut [N]T` to `[]mut T` (Thin pointer to Fat pointer)
+    ArrayPtrToSlice,
 }
 
 #[salsa::tracked]
@@ -61,16 +69,22 @@ pub fn check_file<'db>(db: &'db dyn Database, sf: ast::File<'db>) -> InferenceRe
     let def_idx = DefMap::new(db, types);
     let mut types: HashMap<ExprId<'db>, _> = HashMap::new();
     let mut signatures: HashMap<FnDef<'db>, _> = HashMap::new();
+    let mut coercions: HashMap<ExprId<'db>, _> = HashMap::new();
     for def in sf.defs(db) {
         match def {
             ast::Def::FnDef(fn_def) => {
-                let (tps, sig) = check_fn(db, *fn_def, def_idx);
+                let (tps, sig, cs) = check_fn(db, *fn_def, def_idx);
                 types.extend(tps);
+                coercions.extend(cs);
                 signatures.insert(*fn_def, sig);
             }
         }
     }
-    InferenceResult { types, signatures }
+    InferenceResult {
+        types,
+        signatures,
+        coercions,
+    }
 }
 
 #[salsa::tracked]
@@ -99,6 +113,7 @@ fn parse_type<'db>(db: &'db dyn Database, tp: ast::TypeExprId<'db>) -> Type {
         }
         ast::TypeExprData::Ptr { tp, is_mut } => Type::ptr(parse_type(db, tp), is_mut),
         ast::TypeExprData::Array(size, tp) => Type::array(size, parse_type(db, tp)),
+        ast::TypeExprData::Slice(is_mut, tp) => Type::slice(parse_type(db, tp), is_mut),
     }
 }
 
@@ -107,7 +122,11 @@ pub fn check_fn<'db>(
     db: &'db dyn Database,
     f: ast::FnDef<'db>,
     def_idx: DefMap<'db>,
-) -> (HashMap<ExprId<'db>, SType>, FnSignature) {
+) -> (
+    HashMap<ExprId<'db>, SType>,
+    FnSignature,
+    HashMap<ExprId<'db>, Coercion>,
+) {
     let mut ctx = InferenceCtx::new(db, def_idx);
     for (pat, tp) in f.args(db) {
         let tp = parse_type(db, tp);
@@ -128,19 +147,19 @@ pub fn check_fn<'db>(
         args,
         ret: ctx.seal_type(ret),
     };
-    let types = ctx.finish();
-    (types, sig)
+    let (types, coercions) = ctx.finish();
+    (types, sig, coercions)
 }
 
 impl<'db> InferenceCtx<'db> {
-    fn finish(mut self) -> HashMap<ExprId<'db>, SType> {
+    fn finish(mut self) -> (HashMap<ExprId<'db>, SType>, HashMap<ExprId<'db>, Coercion>) {
         let types = self
             .type_map
             .clone()
             .into_iter()
             .map(|(id, tp)| (id, self.seal_type(tp)))
             .collect();
-        types
+        (types, self.coercions)
     }
 
     fn seal_type(&mut self, tp: Type) -> SType {
@@ -162,6 +181,10 @@ impl<'db> InferenceCtx<'db> {
                 is_mut,
             },
             TypeView::Array(size, tp) => SType::Array(size, Arc::new(self.seal_type(tp))),
+            TypeView::Slice { tp, is_mut } => SType::Slice {
+                tp: Arc::new(self.seal_type(tp)),
+                is_mut,
+            },
         }
     }
 
@@ -178,7 +201,7 @@ impl<'db> InferenceCtx<'db> {
             }
             _ => {
                 let (got, m) = self.infer_expr(e);
-                if !self.coerce(&got, exp) {
+                if !self.coerce(Some(e), &got, exp) {
                     Diagnostic::type_mismatch(
                         self.db,
                         e.span(self.db),
@@ -300,6 +323,7 @@ impl<'db> InferenceCtx<'db> {
                 let (arr_tp, is_mut) = self.infer_expr(arr);
                 match self.view(&arr_tp) {
                     TypeView::Array(_, tp) => (tp, is_mut),
+                    TypeView::Slice { tp, is_mut } => (tp, is_mut),
                     TypeView::Error => (Type::error(), is_mut),
                     _ => {
                         Diagnostic::cannot_index(self.db, arr.span(self.db)).accumulate(self.db);
@@ -333,7 +357,7 @@ impl<'db> InferenceCtx<'db> {
         match pat.data(self.db) {
             ast::PatternData::Wildcard => vec![],
             ast::PatternData::True | ast::PatternData::False => {
-                if !self.coerce(tp, &Type::bool()) {
+                if !self.coerce(None, tp, &Type::bool()) {
                     Diagnostic::type_mismatch(
                         self.db,
                         pat.span(self.db),
@@ -379,7 +403,7 @@ impl<'db> InferenceCtx<'db> {
         }
     }
 
-    fn coerce(&mut self, from: &Type, to: &Type) -> bool {
+    fn coerce(&mut self, expr_id: Option<ast::ExprId<'db>>, from: &Type, to: &Type) -> bool {
         use TypeView::*;
         let v1 = self.view(from);
         let v2 = self.view(to);
@@ -398,15 +422,50 @@ impl<'db> InferenceCtx<'db> {
                     tp: tp2,
                     is_mut: m2,
                 },
-            ) => self.coerce(&tp1, &tp2) && (m1 || !m2),
+            ) => self.coerce(expr_id, &tp1, &tp2) && (m1 || !m2),
+
+            (
+                Slice {
+                    tp: tp1,
+                    is_mut: m1,
+                },
+                Slice {
+                    tp: tp2,
+                    is_mut: m2,
+                },
+            ) => self.coerce(expr_id, &tp1, &tp2) && (m1 || !m2),
+
+            (
+                Ptr {
+                    tp: tp1,
+                    is_mut: m1,
+                },
+                Slice {
+                    tp: tp2,
+                    is_mut: m2,
+                },
+            ) => match self.view(&tp1) {
+                Array(_, tp1) => {
+                    let b = self.coerce(None, &tp1, &tp2) && (m1 || !m2);
+
+                    if let Some(id) = expr_id
+                        && b
+                    {
+                        self.coercions.insert(id, Coercion::ArrayPtrToSlice);
+                    }
+
+                    b
+                }
+                _ => false,
+            },
 
             // TODO: are arrays covariant? are there scary subtyping relations that can screw this up?
-            (Array(s1, tp1), Array(s2, tp2)) => self.coerce(&tp1, &tp2) && (s1 == s2),
+            (Array(s1, tp1), Array(s2, tp2)) => self.coerce(expr_id, &tp1, &tp2) && (s1 == s2),
 
             (Tuple(tps1), Tuple(tps2)) => {
                 tps1.iter()
                     .zip(&tps2)
-                    .all(|(tp1, tp2)| self.coerce(tp1, tp2))
+                    .all(|(tp1, tp2)| self.coerce(expr_id, tp1, tp2))
                     && tps1.len() == tps2.len()
             }
 
@@ -415,9 +474,9 @@ impl<'db> InferenceCtx<'db> {
                 args1
                     .iter()
                     .zip(&args2)
-                    .all(|(tp1, tp2)| self.coerce(tp1, tp2))
+                    .all(|(tp1, tp2)| self.coerce(expr_id, tp1, tp2))
                     && args1.len() == args2.len()
-                    && self.coerce(&tp1, &tp2)
+                    && self.coerce(expr_id, &tp1, &tp2)
             }
 
             (UnifVar(u1), UnifVar(u2)) => {
@@ -446,8 +505,9 @@ impl<'db> InferenceCtx<'db> {
                 args.iter().any(|tp| self.occurs(tp, uv)) || self.occurs(&ret, uv)
             }
             TypeView::Tuple(items) => items.iter().any(|tp| self.occurs(tp, uv)),
-            TypeView::Array(_, tp) => self.occurs(&tp, uv),
-            TypeView::Ptr { tp, .. } => self.occurs(&tp, uv),
+            TypeView::Array(_, tp) | TypeView::Ptr { tp, .. } | TypeView::Slice { tp, .. } => {
+                self.occurs(&tp, uv)
+            }
         }
     }
 }

@@ -6,7 +6,7 @@ use crate::{
     bytecode::{lower::LowerCtx, place::Place, value::Value},
     layout::get_size,
     parser::ast,
-    typecheck::{self, FnSignature, SType},
+    typecheck::{self, FnSignature, InferenceResult, SType},
 };
 
 pub mod ir;
@@ -16,8 +16,11 @@ mod value;
 
 #[salsa::tracked]
 pub fn compile<'db>(db: &'db dyn Database, prog: ast::File<'db>) -> ir::Prog {
-    let types = typecheck::check_file(db, prog).types;
-    let signatures = typecheck::check_file(db, prog).signatures;
+    let InferenceResult {
+        types,
+        signatures,
+        coercions,
+    } = typecheck::check_file(db, prog);
     let mut funcs = HashMap::new();
     for def in prog.defs(db) {
         match def {
@@ -28,7 +31,7 @@ pub fn compile<'db>(db: &'db dyn Database, prog: ast::File<'db>) -> ir::Prog {
                     continue;
                 }
                 let sig = signatures.get(fn_def).unwrap();
-                let (name, func) = lower_function(db, *fn_def, sig, &types);
+                let (name, func) = lower_function(db, *fn_def, sig, &types, &coercions);
                 funcs.insert(name, func);
             }
         }
@@ -41,6 +44,7 @@ pub fn lower_function<'db>(
     ast_fn: ast::FnDef<'db>,
     sig: &FnSignature,
     types: &'db HashMap<ast::ExprId<'db>, typecheck::SType>,
+    coercions: &'db HashMap<ast::ExprId<'db>, typecheck::Coercion>,
 ) -> (String, ir::Func) {
     let mut builder = ir::IrBuilder::new();
 
@@ -49,6 +53,7 @@ pub fn lower_function<'db>(
         scopes: vec![HashMap::new()],
         builder: &mut builder,
         types,
+        coercions,
     };
 
     let ret_size = get_size(&sig.ret);
@@ -66,8 +71,14 @@ pub fn lower_function<'db>(
         None
     };
 
+    let mut param_regs = Vec::new();
+    for _ in &sig.args {
+        param_regs.push(ctx.builder.new_reg());
+    }
+
+    let mut arg_id = 0;
     for ((pat, _), tp) in ast_fn.args(db).into_iter().zip(&sig.args) {
-        let reg = ctx.builder.new_reg();
+        let reg = param_regs[arg_id];
 
         let size = get_size(tp);
 
@@ -81,6 +92,7 @@ pub fn lower_function<'db>(
         };
 
         ctx.lower_pat(pat, arg_val, None, tp);
+        arg_id += 1;
     }
 
     let (reg, place) = sret_place.unwrap_or_else(|| {

@@ -73,7 +73,7 @@ impl<'a> VM<'a> {
                         (Value::Int(a), Value::Int(b)) => regs[reg.0] = Value::Int(a + b),
                         (Value::Ptr(a), Value::Int(b)) => regs[reg.0] = Value::Ptr(a + b),
                         (Value::Int(a), Value::Ptr(b)) => regs[reg.0] = Value::Ptr(a + b),
-                        _ => panic!(),
+                        _ => panic!("{:?}", (regs[reg1.0], regs[reg2.0])),
                     },
                     ir::Inst::Assign(reg, reg1) => regs[reg.0] = regs[reg1.0],
                     ir::Inst::FnCall(reg, name, args) => {

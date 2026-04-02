@@ -10,5 +10,6 @@ pub fn get_size(tp: &SType) -> usize {
         SType::Array(n, stype) => n * get_size(stype),
         SType::Fn(_, _) => 1,
         SType::Ptr { .. } => 1,
+        SType::Slice { .. } => 2,
     }
 }

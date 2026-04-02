@@ -78,6 +78,8 @@ TypeExprData: TypeExprData<'db> = {
     "*" <tp: TypeExpr> => TypeExprData::Ptr { tp, is_mut: false },
     "*" "mut" <tp: TypeExpr> => TypeExprData::Ptr { tp, is_mut: true },
     "[" <size: Num> "]" <tp: TypeExpr> => TypeExprData::Array(size, tp),
+    "[" "]" <tp: TypeExpr> => TypeExprData::Slice(false, tp),
+    "[" "]" "mut" <tp: TypeExpr> => TypeExprData::Slice(true, tp),
     "fn" "(" <args: CommaSep<TypeExpr>> ")" "->" <ret_type: TypeExpr> => TypeExprData::Fn(args, ret_type),
 }
 

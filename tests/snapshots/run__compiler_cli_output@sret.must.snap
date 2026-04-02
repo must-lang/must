@@ -1,0 +1,13 @@
+---
+source: tests/run.rs
+expression: combined_output
+input_file: tests/inputs/sret.must
+---
+EXIT CODE: 0
+
+--- STDOUT ---
+Program evaluated to: Int(
+    15,
+)
+
+--- STDERR ---

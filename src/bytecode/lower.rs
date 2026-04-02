@@ -6,7 +6,7 @@ use crate::{
     bytecode::{ir, place::Place, value::Value},
     layout::get_size,
     parser::ast,
-    typecheck::{self, SType},
+    typecheck::{self, Coercion, SType},
 };
 
 pub struct LowerCtx<'a> {
@@ -14,11 +14,27 @@ pub struct LowerCtx<'a> {
     pub scopes: Vec<HashMap<ast::Ident<'a>, Value>>,
     pub builder: &'a mut ir::IrBuilder,
     pub types: &'a HashMap<ast::ExprId<'a>, typecheck::SType>,
+    pub coercions: &'a HashMap<ast::ExprId<'a>, typecheck::Coercion>,
 }
 
 impl<'a> LowerCtx<'a> {
     pub fn lower_value(&mut self, expr: ast::ExprId<'a>, dest: Option<Place>) -> Value {
-        let size = get_size(self.types.get(&expr).unwrap());
+        // Did the typechecker leave a note about this expression?
+        if let Some(coercion) = self.coercions.get(&expr) {
+            match coercion {
+                typecheck::Coercion::ArrayPtrToSlice => {
+                    return self.lower_array_ptr_to_slice(expr, dest);
+                }
+            }
+        }
+
+        // If no coercion, proceed with standard lowering
+        self.lower_value_inner(expr, dest)
+    }
+
+    pub fn lower_value_inner(&mut self, expr: ast::ExprId<'a>, dest: Option<Place>) -> Value {
+        let tp = self.types.get(&expr).unwrap();
+        let size = get_size(tp);
         match expr.data(self.db) {
             ast::ExprData::Num(n) => {
                 let v = Value::Int(n);
@@ -31,10 +47,13 @@ impl<'a> LowerCtx<'a> {
                 let mut vals: Vec<_> = args
                     .iter()
                     .map(|e| {
-                        let arg_size = get_size(self.types.get(e).unwrap());
+                        let arg_size = match self.coercions.get(e) {
+                            Some(Coercion::ArrayPtrToSlice) => 2,
+                            None => get_size(self.types.get(e).unwrap()),
+                        };
                         let val = self.lower_value(*e, None);
 
-                        if arg_size == 1 {
+                        if arg_size <= 1 {
                             // Scalars fit in a register
                             val.load_scalar(self.builder)
                         } else {
@@ -48,7 +67,7 @@ impl<'a> LowerCtx<'a> {
                     .collect();
                 let reg = self.builder.new_reg();
                 let place = dest.unwrap_or_else(|| {
-                    if size == 1 {
+                    if size <= 1 {
                         Place::Reg(reg)
                     } else {
                         Place::Stack {
@@ -62,9 +81,19 @@ impl<'a> LowerCtx<'a> {
                 }
                 self.builder
                     .push_instr(ir::Inst::FnCall(reg, name.text(self.db).clone(), vals));
-                let v = Value::LVal(place);
-                v.write_to(place, size, self.builder);
-                v
+
+                if size <= 1 {
+                    // Scalar return: the result is physically in `reg`.
+                    let v = Value::LVal(Place::Reg(reg));
+
+                    if let Some(dest_place) = dest {
+                        v.write_to(dest_place, 1, self.builder);
+                    }
+
+                    Value::LVal(place)
+                } else {
+                    Value::LVal(place)
+                }
             }
             ast::ExprData::Error => panic!("cannot lower code with errors"),
             x @ (ast::ExprData::True | ast::ExprData::False) => {
@@ -148,7 +177,12 @@ impl<'a> LowerCtx<'a> {
                 let base_ptr = match self.lower_value(expr, None) {
                     Value::Unit => todo!(),
                     Value::Int(_) => todo!(),
-                    Value::LVal(place) => place.as_addr(self.builder),
+                    Value::LVal(place) => match self.types.get(&expr).unwrap() {
+                        SType::Array(_, stype) => place.as_addr(self.builder),
+                        // load the first value of the slice which is ptr
+                        SType::Slice { tp, is_mut } => self.builder.load_from_place(place),
+                        _ => panic!("cant index {:?}", tp),
+                    },
                 };
                 self.builder
                     .push_instr(ir::Inst::Add(base_ptr, base_ptr, offset_reg));
@@ -259,7 +293,7 @@ impl<'a> LowerCtx<'a> {
                         offset += get_size(tp);
                     }
                 }
-                _ => todo!(),
+                _ => todo!("{:?}", s),
             },
             ast::PatternData::Var { name, .. } => {
                 // let s = match s {
@@ -285,6 +319,39 @@ impl<'a> LowerCtx<'a> {
                 self.extend(name, Value::LVal(place));
             }
         }
+    }
+
+    fn lower_array_ptr_to_slice(&mut self, expr: ast::ExprId<'a>, dest: Option<Place>) -> Value {
+        // A. Lower the original expression without `dest`.
+        // This will give us the thin pointer (*mut [N]int)
+        let thin_ptr_val = self.lower_value_inner(expr, None);
+        let thin_ptr_reg = thin_ptr_val.load_scalar(self.builder);
+
+        // B. Extract the array length from the typechecker's knowledge
+        let arr_type = self.types.get(&expr).unwrap();
+        let len = match arr_type {
+            SType::Ptr { tp, .. } => match &**tp {
+                SType::Array(len, _) => *len,
+                _ => panic!("Expected Array inside Ptr"),
+            },
+            _ => panic!("Expected Ptr type"),
+        };
+
+        // C. Construct the Fat Pointer (Slice) in memory
+        let place = dest.unwrap_or_else(|| Place::Stack {
+            slot: self.builder.new_stack_slot(2),
+            offset: 0,
+        });
+
+        let ptr_val = Value::LVal(Place::Reg(thin_ptr_reg));
+        ptr_val.write_to(place.add_offset(0), 1, self.builder);
+
+        let len_reg = self.builder.new_reg();
+        self.builder.push_instr(ir::Inst::LoadInt(len_reg, len));
+        let len_val = Value::LVal(Place::Reg(len_reg));
+        len_val.write_to(place.add_offset(1), 1, self.builder);
+
+        Value::LVal(place)
     }
 
     fn lookup(&self, ident: ast::Ident<'_>) -> Value {
