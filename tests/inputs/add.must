@@ -2,7 +2,7 @@
 
 fn main() -> int {
     let mut v = 12 in
-    let _ = v := 42 in
+    v := 42;
     let tupl = (13, 165, add(v, 10)) in
     let rev = match tupl {
         (x, _, z) => (z, x),

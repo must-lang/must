@@ -287,6 +287,10 @@ impl<'db> InferenceCtx<'db> {
                     }
                 }
             }
+            ast::ExprData::Seq(e1, e2) => {
+                self.infer_expr(e1);
+                self.infer_expr(e2)
+            }
         };
         self.type_map.insert(e, tp.0.clone());
         tp

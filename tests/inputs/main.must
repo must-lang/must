@@ -7,30 +7,29 @@ fn main() -> () {
 
 fn loop(x: int) -> () {
     match le(x, 10) {
-        true => let _ = printnum(x) in loop(add(x, 1)),
+        true => printnum(x); loop(add(x, 1)),
         false => ()
     }
 }
 
 fn stupid() -> int {
     match (1, 2, 3) {
-        (x, y, mut z) => let _ = z := 42 in z
+        (x, y, mut z) => z := 42; z
     }
 }
 
 fn test() -> int {
-    let _ = printnum(42) in
+    printnum(42);
     let mut x = stupid() in
     let mut y = 7 in
-    let _ = swap(&x, &y) in
+    swap(&x, &y);
     x
 }
 
 fn swap(x: *mut int, y: *mut int) -> () {
     let tmp = *x in
-    let _ = *x := *y in
-    let _ = *y := tmp in
-    ()
+    *x := *y;
+    *y := tmp
 }
 
 extern fn printnum(x: int) -> ();

@@ -46,6 +46,7 @@ pub enum ExprData<'db> {
     Var(Ident<'db>),
     FnCall(Ident<'db>, Vec<ExprId<'db>>),
     Let(PatternId<'db>, ExprId<'db>, ExprId<'db>),
+    Seq(ExprId<'db>, ExprId<'db>),
     Assign(ExprId<'db>, ExprId<'db>),
 
     AddressOf(ExprId<'db>),

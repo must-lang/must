@@ -168,6 +168,10 @@ impl<'a> LowerCtx<'a> {
                 self.builder.switch_to_block(end_block);
                 Value::LVal(place)
             }
+            ast::ExprData::Seq(e1, e2) => {
+                self.lower_value(e1, None);
+                self.lower_value(e2, dest)
+            }
         }
     }
 
