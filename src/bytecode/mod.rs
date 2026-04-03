@@ -6,7 +6,7 @@ use crate::{
     bytecode::{lower::LowerCtx, place::Place, value::Value},
     layout::get_size,
     parser::ast,
-    typecheck::{self, FnSignature, InferenceResult, SType},
+    typecheck::{self, FnSignature, InferenceResult},
 };
 
 pub mod ir;
@@ -76,8 +76,7 @@ pub fn lower_function<'db>(
         param_regs.push(ctx.builder.new_reg());
     }
 
-    let mut arg_id = 0;
-    for ((pat, _), tp) in ast_fn.args(db).into_iter().zip(&sig.args) {
+    for (arg_id, ((pat, _), tp)) in ast_fn.args(db).into_iter().zip(&sig.args).enumerate() {
         let reg = param_regs[arg_id];
 
         let size = get_size(tp);
@@ -92,7 +91,6 @@ pub fn lower_function<'db>(
         };
 
         ctx.lower_pat(pat, arg_val, None, tp);
-        arg_id += 1;
     }
 
     let (reg, place) = sret_place.unwrap_or_else(|| {
