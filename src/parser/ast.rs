@@ -100,6 +100,7 @@ pub enum TypeExprData<'db> {
 
     Tuple(Vec<TypeExprId<'db>>),
     Array(usize, TypeExprId<'db>),
+    Slice(bool, TypeExprId<'db>),
     Int,
     Bool,
     Ptr { tp: TypeExprId<'db>, is_mut: bool },

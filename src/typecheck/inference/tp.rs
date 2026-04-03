@@ -67,6 +67,7 @@ pub enum TypeView {
 
     Fn(Vec<Type>, Type),
     Ptr { tp: Type, is_mut: bool },
+    Slice { tp: Type, is_mut: bool },
 }
 
 impl TypeView {
@@ -105,8 +106,12 @@ impl Type {
         TypeView::Array(size, tp).wrap()
     }
 
-    pub(crate) fn ptr(tp: Type, is_mut: bool) -> Type {
+    pub(crate) fn ptr(tp: Type, is_mut: bool) -> Self {
         TypeView::Ptr { tp, is_mut }.wrap()
+    }
+
+    pub(crate) fn slice(tp: Type, is_mut: bool) -> Self {
+        TypeView::Slice { tp, is_mut }.wrap()
     }
 }
 

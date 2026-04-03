@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 use ena::unify::InPlaceUnificationTable;
 
-use crate::{parser::ast, typecheck::DefMap};
+use crate::{
+    parser::ast,
+    typecheck::{Coercion, DefMap},
+};
 
 pub struct InferenceCtx<'db> {
     unif: InPlaceUnificationTable<UnifVar>,
@@ -10,6 +13,7 @@ pub struct InferenceCtx<'db> {
     def_map: DefMap<'db>,
     pub db: &'db dyn salsa::Database,
     pub type_map: HashMap<ast::ExprId<'db>, Type>,
+    pub coercions: HashMap<ast::ExprId<'db>, Coercion>,
 }
 impl<'db> InferenceCtx<'db> {
     pub fn new(db: &'db dyn salsa::Database, idx: DefMap<'db>) -> Self {
@@ -19,6 +23,7 @@ impl<'db> InferenceCtx<'db> {
             scopes: vec![HashMap::new()],
             def_map: idx,
             type_map: HashMap::new(),
+            coercions: HashMap::new(),
         }
     }
     pub(crate) fn union(&mut self, u1: UnifVar, u2: UnifVar) {
