@@ -1,6 +1,6 @@
 use salsa::Database;
 
-use crate::{diagnostic::Diagnostic, span::Span, typecheck::SType};
+use crate::{diagnostic::Diagnostic, span::Span, tp::Type};
 
 impl Diagnostic {
     pub(super) fn unbound_var(db: &dyn Database, span: Span, name: &str) -> Self {
@@ -23,7 +23,7 @@ impl Diagnostic {
         )
     }
 
-    pub(super) fn type_mismatch(db: &dyn Database, span: Span, exp: SType, got: SType) -> Self {
+    pub(super) fn type_mismatch(db: &dyn Database, span: Span, exp: Type, got: Type) -> Self {
         Diagnostic::error(
             db,
             span,
@@ -31,7 +31,7 @@ impl Diagnostic {
         )
     }
 
-    pub(super) fn missing_argument(db: &dyn Database, id: usize, span: Span, tp: SType) -> Self {
+    pub(super) fn missing_argument(db: &dyn Database, id: usize, span: Span, tp: Type) -> Self {
         Diagnostic::error(db, span, format!("missing arg #{} of type {:?}", id, tp))
     }
 

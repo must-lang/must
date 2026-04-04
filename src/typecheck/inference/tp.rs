@@ -2,6 +2,8 @@ use std::{hash::Hash, sync::Arc};
 
 use ena::unify::{NoError, UnifyKey, UnifyValue};
 
+use crate::tp::Type;
+
 use super::InferenceCtx;
 
 #[derive(Copy, Clone, Debug, Eq)]
@@ -22,7 +24,7 @@ impl Hash for UnifVar {
     }
 }
 
-impl UnifyValue for Type {
+impl UnifyValue for UType {
     type Error = NoError;
 
     fn unify_values(v1: &Self, v2: &Self) -> Result<Self, Self::Error> {
@@ -34,7 +36,7 @@ impl UnifyValue for Type {
 }
 
 impl UnifyKey for UnifVar {
-    type Value = Option<Type>;
+    type Value = Option<UType>;
 
     fn index(&self) -> u32 {
         self.id
@@ -50,88 +52,106 @@ impl UnifyKey for UnifVar {
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, salsa::Update)]
-pub struct Type {
-    data: Arc<TypeView>,
+pub struct UType {
+    data: Arc<UTypeView>,
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, salsa::Update)]
-pub enum TypeView {
+pub enum UTypeView {
     Error,
 
     Int,
-    Tuple(Vec<Type>),
+    Tuple(Vec<UType>),
     Bool,
     UnifVar(UnifVar),
 
-    Array(usize, Type),
+    Array(usize, UType),
 
-    Fn(Vec<Type>, Type),
-    Ptr { tp: Type, is_mut: bool },
-    Slice { tp: Type, is_mut: bool },
+    Fn(Vec<UType>, UType),
+    Ptr { tp: UType, is_mut: bool },
+    Slice { tp: UType, is_mut: bool },
 }
 
-impl TypeView {
-    pub fn wrap(self) -> Type {
-        Type {
+impl UTypeView {
+    pub fn wrap(self) -> UType {
+        UType {
             data: Arc::new(self),
         }
     }
 }
 
-impl Type {
+impl UType {
     pub fn unit() -> Self {
-        TypeView::Tuple(vec![]).wrap()
+        UTypeView::Tuple(vec![]).wrap()
     }
-    pub fn fun(args: Vec<Type>, ret: Type) -> Self {
-        TypeView::Fn(args, ret).wrap()
+    pub fn fun(args: Vec<UType>, ret: UType) -> Self {
+        UTypeView::Fn(args, ret).wrap()
     }
 
     pub fn error() -> Self {
-        TypeView::Error.wrap()
+        UTypeView::Error.wrap()
     }
 
     pub(crate) fn int() -> Self {
-        TypeView::Int.wrap()
+        UTypeView::Int.wrap()
     }
 
     pub(crate) fn bool() -> Self {
-        TypeView::Bool.wrap()
+        UTypeView::Bool.wrap()
     }
 
-    pub(crate) fn tuple(tps: Vec<Type>) -> Self {
-        TypeView::Tuple(tps).wrap()
+    pub(crate) fn tuple(tps: Vec<UType>) -> Self {
+        UTypeView::Tuple(tps).wrap()
     }
 
-    pub(crate) fn array(size: usize, tp: Type) -> Self {
-        TypeView::Array(size, tp).wrap()
+    pub(crate) fn array(size: usize, tp: UType) -> Self {
+        UTypeView::Array(size, tp).wrap()
     }
 
-    pub(crate) fn ptr(tp: Type, is_mut: bool) -> Self {
-        TypeView::Ptr { tp, is_mut }.wrap()
+    pub(crate) fn ptr(tp: UType, is_mut: bool) -> Self {
+        UTypeView::Ptr { tp, is_mut }.wrap()
     }
 
-    pub(crate) fn slice(tp: Type, is_mut: bool) -> Self {
-        TypeView::Slice { tp, is_mut }.wrap()
+    pub(crate) fn slice(tp: UType, is_mut: bool) -> Self {
+        UTypeView::Slice { tp, is_mut }.wrap()
     }
 }
 
 impl<'db> InferenceCtx<'db> {
-    pub fn view(&mut self, tp: &Type) -> TypeView {
+    pub fn view(&mut self, tp: &UType) -> UTypeView {
         match tp.data.as_ref() {
-            TypeView::UnifVar(uvar) => {
+            UTypeView::UnifVar(uvar) => {
                 let root = self.unif.probe_value(*uvar);
                 match root {
                     Some(tp) => self.view(&tp),
-                    None => TypeView::UnifVar(*uvar),
+                    None => UTypeView::UnifVar(*uvar),
                 }
             }
             _ => (*tp.data).clone(),
         }
     }
 
-    pub fn new_uvar(&mut self) -> Type {
+    pub fn new_uvar(&mut self) -> UType {
         let mut k = self.unif.new_key(None);
         k.lvl = self.lvl();
-        TypeView::UnifVar(k).wrap()
+        UTypeView::UnifVar(k).wrap()
+    }
+}
+
+impl From<Type> for UType {
+    fn from(value: Type) -> Self {
+        match value {
+            Type::Error => UType::error(),
+            Type::Int => UType::int(),
+            Type::Tuple(tps) => UType::tuple(tps.into_iter().map(Into::into).collect()),
+            Type::Bool => UType::bool(),
+            Type::Array(n, tp) => UType::array(n, ((*tp).clone()).into()),
+            Type::Fn(args, ret) => UType::fun(
+                args.into_iter().map(Into::into).collect(),
+                ((*ret).clone()).into(),
+            ),
+            Type::Ptr { tp, is_mut } => UType::ptr(((*tp).clone()).into(), is_mut),
+            Type::Slice { tp, is_mut } => UType::slice(((*tp).clone()).into(), is_mut),
+        }
     }
 }

@@ -1,15 +1,14 @@
-use crate::typecheck::SType;
+use crate::tp::Type;
 
-pub fn get_size(tp: &SType) -> usize {
+pub fn get_size(tp: &Type) -> usize {
     match tp {
-        SType::Error => panic!("{tp:?}"),
-        SType::Int => 1,
-        SType::Tuple(stypes) => stypes.iter().map(get_size).sum(),
-        SType::Bool => 1,
-        SType::UnifVar(_) => panic!(),
-        SType::Array(n, stype) => n * get_size(stype),
-        SType::Fn(_, _) => 1,
-        SType::Ptr { .. } => 1,
-        SType::Slice { .. } => 2,
+        Type::Error => panic!("{tp:?}"),
+        Type::Int => 1,
+        Type::Tuple(tps) => tps.iter().map(get_size).sum(),
+        Type::Bool => 1,
+        Type::Array(n, tp) => n * get_size(tp),
+        Type::Fn(_, _) => 1,
+        Type::Ptr { .. } => 1,
+        Type::Slice { .. } => 2,
     }
 }

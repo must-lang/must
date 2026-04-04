@@ -2,9 +2,9 @@ use line_index::LineIndex;
 
 use tower_lsp::{LanguageServer, LspService, Server, jsonrpc, lsp_types::*};
 
-use crate::diagnostic;
-use crate::parser::Source;
-use crate::queries::compile_all;
+use crate::parser::{Crate, Source};
+use crate::{bytecode, diagnostic};
+// use crate::queries::compile_all;
 use crate::state::State;
 
 pub async fn run() {
@@ -101,11 +101,12 @@ impl LanguageServer for Backend {
 
         let db = &self.state.get_db();
         let source = self.state.get_file(module_name).unwrap();
+        let c = Crate::new(db, source);
 
-        let _ = compile_all(db, source);
+        let _ = bytecode::compile(db, c);
 
         let diags: Vec<&diagnostic::Diagnostic> =
-            compile_all::accumulated::<diagnostic::Diagnostic>(db, source);
+            bytecode::compile::accumulated::<diagnostic::Diagnostic>(db, c);
 
         let idx = LineIndex::new(source.text(db));
 

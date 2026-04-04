@@ -1,11 +1,4 @@
-use std::collections::BTreeMap;
-
 use crate::span::Span;
-
-#[salsa::tracked(debug)]
-pub struct Workspace<'db> {
-    files: BTreeMap<String, File<'db>>,
-}
 
 #[salsa::tracked(debug)]
 pub struct File<'db> {

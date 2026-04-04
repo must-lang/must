@@ -9,43 +9,22 @@ mod error;
 mod inference;
 
 use crate::{
+    def_map::{self, FunctionId},
     diagnostic::Diagnostic,
-    parser::ast::{self, ExprId, FnDef},
-    typecheck::inference::{InferenceCtx, Type, TypeView, UnifVar},
+    mod_tree::mod_tree,
+    parser::{
+        ast::{self, ExprId, FnDef},
+        func_ast,
+    },
+    resolve::{FnSignature, func_signature},
+    tp::Type,
+    typecheck::inference::{InferenceCtx, UType, UTypeView, UnifVar},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub struct InferenceResult<'db> {
-    pub types: HashMap<ExprId<'db>, SType>,
-    pub signatures: HashMap<FnDef<'db>, FnSignature>,
+    pub inferred_types: HashMap<ExprId<'db>, Type>,
     pub coercions: HashMap<ExprId<'db>, Coercion>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
-pub struct FnSignature {
-    pub args: Vec<SType>,
-    pub ret: SType,
-}
-
-#[salsa::tracked(debug)]
-pub struct DefMap<'db> {
-    types: BTreeMap<String, Type>,
-}
-
-#[derive(Debug, Clone, Hash, PartialEq, Eq, salsa::Update)]
-pub enum SType {
-    Error,
-
-    Int,
-    Tuple(Vec<SType>),
-    Bool,
-    UnifVar(UnifVar),
-
-    Array(usize, Arc<SType>),
-
-    Fn(Vec<SType>, Arc<SType>),
-    Ptr { tp: Arc<SType>, is_mut: bool },
-    Slice { tp: Arc<SType>, is_mut: bool },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
@@ -55,140 +34,114 @@ pub enum Coercion {
 }
 
 #[salsa::tracked]
-pub fn check_file<'db>(db: &'db dyn Database, sf: ast::File<'db>) -> InferenceResult<'db> {
-    let mut types = BTreeMap::new();
-    for def in sf.defs(db) {
-        match def {
-            ast::Def::FnDef(fn_def) => {
-                let (args, ret) = parse_fn_type(db, *fn_def);
-                let name = fn_def.name(db).text(db).clone();
-                types.insert(name, Type::fun(args, ret));
-            }
+pub fn check_crate<'db>(db: &'db dyn salsa::Database, c: crate::parser::Crate) -> Option<()> {
+    let tree = mod_tree(db, c);
+    for module_id in tree.keys() {
+        // 3. Get the DefMap for this module
+        let def_map = def_map::module_def_map(db, *module_id)?;
+
+        // 4. Look at everything defined in this module
+        for f in def_map.functions.values() {
+            check_fn(db, *f);
         }
     }
-    let def_idx = DefMap::new(db, types);
-    let mut types: HashMap<ExprId<'db>, _> = HashMap::new();
-    let mut signatures: HashMap<FnDef<'db>, _> = HashMap::new();
-    let mut coercions: HashMap<ExprId<'db>, _> = HashMap::new();
-    for def in sf.defs(db) {
-        match def {
-            ast::Def::FnDef(fn_def) => {
-                let (tps, sig, cs) = check_fn(db, *fn_def, def_idx);
-                types.extend(tps);
-                coercions.extend(cs);
-                signatures.insert(*fn_def, sig);
-            }
-        }
-    }
-    InferenceResult {
-        types,
-        signatures,
-        coercions,
-    }
+    Some(())
 }
 
-#[salsa::tracked]
-fn parse_fn_type<'db>(db: &'db dyn Database, fn_def: ast::FnDef<'db>) -> (Vec<Type>, Type) {
-    let args = fn_def
-        .args(db)
-        .iter()
-        .map(|(_, tp)| parse_type(db, *tp))
-        .collect();
-    let ret = parse_type(db, fn_def.ret_type(db));
-    (args, ret)
-}
+// #[salsa::tracked]
+// pub fn check_file<'db>(db: &'db dyn Database, sf: ast::File<'db>) -> InferenceResult<'db> {
+//     let mut types = BTreeMap::new();
+//     for def in sf.defs(db) {
+//         match def {
+//             ast::Def::FnDef(fn_def) => {
+//                 let (args, ret) = parse_fn_type(db, *fn_def);
+//                 let name = fn_def.name(db).text(db).clone();
+//                 types.insert(name, UType::fun(args, ret));
+//             }
+//         }
+//     }
+//     let def_idx = DefMap::new(db, types);
+//     let mut types: HashMap<ExprId<'db>, _> = HashMap::new();
+//     let mut signatures: HashMap<FnDef<'db>, _> = HashMap::new();
+//     let mut coercions: HashMap<ExprId<'db>, _> = HashMap::new();
+//     for def in sf.defs(db) {
+//         match def {
+//             ast::Def::FnDef(fn_def) => {
+//                 let (tps, sig, cs) = check_fn(db, *fn_def, def_idx);
+//                 types.extend(tps);
+//                 coercions.extend(cs);
+//                 signatures.insert(*fn_def, sig);
+//             }
+//         }
+//     }
+//     InferenceResult {
+//         types,
+//         signatures,
+//         coercions,
+//     }
+// }
 
 #[salsa::tracked]
-fn parse_type<'db>(db: &'db dyn Database, tp: ast::TypeExprId<'db>) -> Type {
-    match tp.data(db) {
-        ast::TypeExprData::Error => Type::error(),
-        ast::TypeExprData::Int => Type::int(),
-        ast::TypeExprData::Bool => Type::bool(),
-        ast::TypeExprData::Fn(args, ret) => Type::fun(
-            args.into_iter().map(|tp| parse_type(db, tp)).collect(),
-            parse_type(db, ret),
-        ),
-        ast::TypeExprData::Tuple(types) => {
-            Type::tuple(types.into_iter().map(|tp| parse_type(db, tp)).collect())
-        }
-        ast::TypeExprData::Ptr { tp, is_mut } => Type::ptr(parse_type(db, tp), is_mut),
-        ast::TypeExprData::Array(size, tp) => Type::array(size, parse_type(db, tp)),
-        ast::TypeExprData::Slice(is_mut, tp) => Type::slice(parse_type(db, tp), is_mut),
-    }
-}
+pub fn check_fn<'db>(db: &'db dyn Database, f: FunctionId<'db>) -> InferenceResult<'db> {
+    let mut ctx = InferenceCtx::new(db, f);
+    let sig = func_signature(db, f);
 
-#[salsa::tracked]
-pub fn check_fn<'db>(
-    db: &'db dyn Database,
-    f: ast::FnDef<'db>,
-    def_idx: DefMap<'db>,
-) -> (
-    HashMap<ExprId<'db>, SType>,
-    FnSignature,
-    HashMap<ExprId<'db>, Coercion>,
-) {
-    let mut ctx = InferenceCtx::new(db, def_idx);
-    for (pat, tp) in f.args(db) {
-        let tp = parse_type(db, tp);
-        for (name, tp, is_mut) in ctx.check_pat(pat, &tp) {
+    let fn_ast = func_ast(db, f);
+
+    for ((pat, _), tp) in fn_ast.args(db).into_iter().zip(sig.args) {
+        for (name, tp, is_mut) in ctx.check_pat(pat, &tp.into()) {
             ctx.extend(name, tp, is_mut);
         }
     }
-    let ret = parse_type(db, f.ret_type(db));
-    let args = f
-        .args(db)
-        .iter()
-        .map(|(_, tp)| ctx.seal_type(parse_type(db, *tp)))
-        .collect();
-    if let Some(body) = f.body(db) {
-        ctx.check_expr(body, &ret, false);
+
+    if let Some(body) = fn_ast.body(db) {
+        ctx.check_expr(body, &sig.ret.into(), false);
     }
-    let sig = FnSignature {
-        args,
-        ret: ctx.seal_type(ret),
-    };
-    let (types, coercions) = ctx.finish();
-    (types, sig, coercions)
+
+    ctx.finish()
 }
 
 impl<'db> InferenceCtx<'db> {
-    fn finish(mut self) -> (HashMap<ExprId<'db>, SType>, HashMap<ExprId<'db>, Coercion>) {
+    fn finish(mut self) -> InferenceResult<'db> {
         let types = self
-            .type_map
+            .inferred_types
             .clone()
             .into_iter()
             .map(|(id, tp)| (id, self.seal_type(tp)))
             .collect();
-        (types, self.coercions)
+        InferenceResult {
+            inferred_types: types,
+            coercions: self.coercions,
+        }
     }
 
-    fn seal_type(&mut self, tp: Type) -> SType {
+    fn seal_type(&mut self, tp: UType) -> Type {
         match self.view(&tp) {
-            TypeView::Error => SType::Error,
-            TypeView::Tuple(tps) => {
-                SType::Tuple(tps.into_iter().map(|tp| self.seal_type(tp)).collect())
+            UTypeView::Error => Type::Error,
+            UTypeView::Tuple(tps) => {
+                Type::Tuple(tps.into_iter().map(|tp| self.seal_type(tp)).collect())
             }
-            TypeView::Int => SType::Int,
-            TypeView::Bool => SType::Bool,
-            TypeView::UnifVar(unif_var) => SType::UnifVar(unif_var),
-            TypeView::Fn(args, ret) => {
+            UTypeView::Int => Type::Int,
+            UTypeView::Bool => Type::Bool,
+            UTypeView::UnifVar(_) => Type::Error,
+            UTypeView::Fn(args, ret) => {
                 let args = args.into_iter().map(|tp| self.seal_type(tp)).collect();
                 let ret = self.seal_type(ret);
-                SType::Fn(args, Arc::new(ret))
+                Type::Fn(args, Arc::new(ret))
             }
-            TypeView::Ptr { tp, is_mut } => SType::Ptr {
+            UTypeView::Ptr { tp, is_mut } => Type::Ptr {
                 tp: Arc::new(self.seal_type(tp)),
                 is_mut,
             },
-            TypeView::Array(size, tp) => SType::Array(size, Arc::new(self.seal_type(tp))),
-            TypeView::Slice { tp, is_mut } => SType::Slice {
+            UTypeView::Array(size, tp) => Type::Array(size, Arc::new(self.seal_type(tp))),
+            UTypeView::Slice { tp, is_mut } => Type::Slice {
                 tp: Arc::new(self.seal_type(tp)),
                 is_mut,
             },
         }
     }
 
-    fn check_expr(&mut self, e: ast::ExprId<'db>, exp: &Type, exp_mut: bool) {
+    fn check_expr(&mut self, e: ast::ExprId<'db>, exp: &UType, exp_mut: bool) {
         match e.data(self.db) {
             ast::ExprData::Let(pat, e1, e2) => {
                 let (tp, _) = self.with_scope(|ctx| ctx.infer_expr(e1));
@@ -197,7 +150,7 @@ impl<'db> InferenceCtx<'db> {
                     self.extend(x, tp, is_mut);
                 }
                 self.check_expr(e2, exp, exp_mut);
-                self.type_map.insert(e, exp.clone());
+                self.inferred_types.insert(e, exp.clone());
             }
             _ => {
                 let (got, m) = self.infer_expr(e);
@@ -217,21 +170,21 @@ impl<'db> InferenceCtx<'db> {
         }
     }
 
-    fn infer_expr(&mut self, e: ast::ExprId<'db>) -> (Type, bool) {
+    fn infer_expr(&mut self, e: ast::ExprId<'db>) -> (UType, bool) {
         let tp = match e.data(self.db) {
-            ast::ExprData::Error => (Type::error(), true),
-            ast::ExprData::Num(_) => (Type::int(), false),
+            ast::ExprData::Error => (UType::error(), true),
+            ast::ExprData::Num(_) => (UType::int(), false),
             ast::ExprData::Var(ident) => match self.lookup(ident) {
                 Some(tp) => tp.clone(),
                 None => {
                     Diagnostic::unbound_var(self.db, e.span(self.db), ident.text(self.db))
                         .accumulate(self.db);
-                    (Type::error(), true)
+                    (UType::error(), true)
                 }
             },
             ast::ExprData::FnCall(ident, exprs) => match self.lookup(ident) {
                 Some((tp, _)) => match self.view(&tp) {
-                    TypeView::Fn(args, ret) => {
+                    UTypeView::Fn(args, ret) => {
                         let mut exprs_iter = exprs.into_iter();
                         let mut id = 0;
                         for arg in args {
@@ -260,7 +213,7 @@ impl<'db> InferenceCtx<'db> {
                 None => {
                     Diagnostic::unbound_var(self.db, e.span(self.db), ident.text(self.db))
                         .accumulate(self.db);
-                    (Type::error(), false)
+                    (UType::error(), false)
                 }
             },
             ast::ExprData::Let(pat, e1, e2) => {
@@ -271,7 +224,7 @@ impl<'db> InferenceCtx<'db> {
                 }
                 self.infer_expr(e2)
             }
-            ast::ExprData::True | ast::ExprData::False => (Type::bool(), false),
+            ast::ExprData::True | ast::ExprData::False => (UType::bool(), false),
             ast::ExprData::Match(expr, items) => {
                 let (pat_tp, _) = self.infer_expr(expr);
                 let tp = self.new_uvar();
@@ -286,7 +239,7 @@ impl<'db> InferenceCtx<'db> {
             }
             ast::ExprData::Tuple(exprs) => {
                 let tps = exprs.into_iter().map(|e| self.infer_expr(e).0).collect();
-                (Type::tuple(tps), false)
+                (UType::tuple(tps), false)
             }
             ast::ExprData::Assign(e1, e2) => {
                 let (tp, is_mut) = self.infer_expr(e1);
@@ -294,19 +247,19 @@ impl<'db> InferenceCtx<'db> {
                     Diagnostic::exp_mut(self.db, e1.span(self.db)).accumulate(self.db);
                 }
                 self.check_expr(e2, &tp, false);
-                (Type::unit(), false)
+                (UType::unit(), false)
             }
             ast::ExprData::AddressOf(e) => {
                 let (tp, is_mut) = self.infer_expr(e);
-                (Type::ptr(tp, is_mut), false)
+                (UType::ptr(tp, is_mut), false)
             }
             ast::ExprData::Deref(e) => {
                 let (tp, _) = self.infer_expr(e);
                 match self.view(&tp) {
-                    TypeView::Ptr { tp, is_mut } => (tp, is_mut),
+                    UTypeView::Ptr { tp, is_mut } => (tp, is_mut),
                     _ => {
                         Diagnostic::cannot_deref(self.db, e.span(self.db)).accumulate(self.db);
-                        (Type::error(), true)
+                        (UType::error(), true)
                     }
                 }
             }
@@ -316,18 +269,18 @@ impl<'db> InferenceCtx<'db> {
                 for e in exprs {
                     self.check_expr(e, &tp, false);
                 }
-                (Type::array(size, tp), false)
+                (UType::array(size, tp), false)
             }
             ast::ExprData::Index(arr, id) => {
-                self.check_expr(id, &Type::int(), false);
+                self.check_expr(id, &UType::int(), false);
                 let (arr_tp, is_mut) = self.infer_expr(arr);
                 match self.view(&arr_tp) {
-                    TypeView::Array(_, tp) => (tp, is_mut),
-                    TypeView::Slice { tp, is_mut } => (tp, is_mut),
-                    TypeView::Error => (Type::error(), is_mut),
+                    UTypeView::Array(_, tp) => (tp, is_mut),
+                    UTypeView::Slice { tp, is_mut } => (tp, is_mut),
+                    UTypeView::Error => (UType::error(), is_mut),
                     _ => {
                         Diagnostic::cannot_index(self.db, arr.span(self.db)).accumulate(self.db);
-                        (Type::error(), is_mut)
+                        (UType::error(), is_mut)
                     }
                 }
             }
@@ -336,33 +289,33 @@ impl<'db> InferenceCtx<'db> {
                 self.infer_expr(e2)
             }
             ast::ExprData::BinOp(op, e1, e2) => {
-                self.check_expr(e1, &Type::int(), false);
-                self.check_expr(e2, &Type::int(), false);
+                self.check_expr(e1, &UType::int(), false);
+                self.check_expr(e2, &UType::int(), false);
                 let tp = match op {
-                    ast::Op::Add | ast::Op::Sub | ast::Op::Mul | ast::Op::Div => Type::int(),
-                    ast::Op::Le | ast::Op::Eq => Type::bool(),
+                    ast::Op::Add | ast::Op::Sub | ast::Op::Mul | ast::Op::Div => UType::int(),
+                    ast::Op::Le | ast::Op::Eq => UType::bool(),
                 };
                 (tp, false)
             }
         };
-        self.type_map.insert(e, tp.0.clone());
+        self.inferred_types.insert(e, tp.0.clone());
         tp
     }
 
     fn check_pat(
         &mut self,
         pat: ast::PatternId<'db>,
-        tp: &Type,
-    ) -> Vec<(ast::Ident<'db>, Type, bool)> {
+        tp: &UType,
+    ) -> Vec<(ast::Ident<'db>, UType, bool)> {
         match pat.data(self.db) {
             ast::PatternData::Wildcard => vec![],
             ast::PatternData::True | ast::PatternData::False => {
-                if !self.coerce(None, tp, &Type::bool()) {
+                if !self.coerce(None, tp, &UType::bool()) {
                     Diagnostic::type_mismatch(
                         self.db,
                         pat.span(self.db),
                         self.seal_type(tp.clone()),
-                        self.seal_type(Type::bool()),
+                        self.seal_type(UType::bool()),
                     )
                     .accumulate(self.db);
                 }
@@ -372,13 +325,13 @@ impl<'db> InferenceCtx<'db> {
                 vec![(name, tp.clone(), is_mut)]
             }
             ast::PatternData::Tuple(pats) => match self.view(tp) {
-                TypeView::Tuple(tps) => {
+                UTypeView::Tuple(tps) => {
                     if pats.len() != tps.len() {
                         Diagnostic::type_mismatch(
                             self.db,
                             pat.span(self.db),
                             self.seal_type(tp.clone()),
-                            self.seal_type(Type::tuple(vec![])),
+                            self.seal_type(UType::tuple(vec![])),
                         )
                         .accumulate(self.db);
                         return vec![];
@@ -394,7 +347,7 @@ impl<'db> InferenceCtx<'db> {
                         self.db,
                         pat.span(self.db),
                         self.seal_type(tp.clone()),
-                        self.seal_type(Type::tuple(vec![])),
+                        self.seal_type(UType::tuple(vec![])),
                     )
                     .accumulate(self.db);
                     vec![]
@@ -403,8 +356,8 @@ impl<'db> InferenceCtx<'db> {
         }
     }
 
-    fn coerce(&mut self, expr_id: Option<ast::ExprId<'db>>, from: &Type, to: &Type) -> bool {
-        use TypeView::*;
+    fn coerce(&mut self, expr_id: Option<ast::ExprId<'db>>, from: &UType, to: &UType) -> bool {
+        use UTypeView::*;
         let v1 = self.view(from);
         let v2 = self.view(to);
         match (v1, v2) {
@@ -497,15 +450,15 @@ impl<'db> InferenceCtx<'db> {
         }
     }
 
-    pub fn occurs(&mut self, tp: &Type, uv: UnifVar) -> bool {
+    pub fn occurs(&mut self, tp: &UType, uv: UnifVar) -> bool {
         match self.view(tp) {
-            TypeView::Error | TypeView::Bool | TypeView::Int => false,
-            TypeView::UnifVar(unif_var) => uv == unif_var,
-            TypeView::Fn(args, ret) => {
+            UTypeView::Error | UTypeView::Bool | UTypeView::Int => false,
+            UTypeView::UnifVar(unif_var) => uv == unif_var,
+            UTypeView::Fn(args, ret) => {
                 args.iter().any(|tp| self.occurs(tp, uv)) || self.occurs(&ret, uv)
             }
-            TypeView::Tuple(items) => items.iter().any(|tp| self.occurs(tp, uv)),
-            TypeView::Array(_, tp) | TypeView::Ptr { tp, .. } | TypeView::Slice { tp, .. } => {
+            UTypeView::Tuple(items) => items.iter().any(|tp| self.occurs(tp, uv)),
+            UTypeView::Array(_, tp) | UTypeView::Ptr { tp, .. } | UTypeView::Slice { tp, .. } => {
                 self.occurs(&tp, uv)
             }
         }

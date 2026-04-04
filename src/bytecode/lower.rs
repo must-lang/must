@@ -6,14 +6,15 @@ use crate::{
     bytecode::{ir, place::Place, value::Value},
     layout::get_size,
     parser::ast,
-    typecheck::{self, Coercion, SType},
+    tp::Type,
+    typecheck::Coercion,
 };
 
 pub struct LowerCtx<'a> {
     pub db: &'a dyn Database,
     pub scopes: Vec<HashMap<ast::Ident<'a>, Value>>,
     pub builder: &'a mut ir::IrBuilder,
-    pub types: &'a HashMap<ast::ExprId<'a>, SType>,
+    pub types: &'a HashMap<ast::ExprId<'a>, Type>,
     pub coercions: &'a HashMap<ast::ExprId<'a>, Coercion>,
 }
 
@@ -195,9 +196,9 @@ impl<'a> LowerCtx<'a> {
 
                 let base = match self.lower_value(place_expr, None) {
                     Value::LVal(place) => match self.types.get(&place_expr).unwrap() {
-                        SType::Array(_, _) => place.as_addr(self.builder),
+                        Type::Array(_, _) => place.as_addr(self.builder),
                         // load the first value of the slice which is ptr
-                        SType::Slice { .. } => self.builder.load_from_place(place),
+                        Type::Slice { .. } => self.builder.load_from_place(place),
                         _ => panic!("cant index {:?}", tp),
                     },
                     _ => panic!("cant index {:?}", tp),
@@ -270,7 +271,7 @@ impl<'a> LowerCtx<'a> {
         pat: ast::PatternId<'a>,
         s: Value,
         fail_block: Option<ir::BlockId>,
-        tp: &typecheck::SType,
+        tp: &Type,
     ) {
         match pat.data(self.db) {
             ast::PatternData::Wildcard => (),
@@ -308,7 +309,7 @@ impl<'a> LowerCtx<'a> {
                 Value::LVal(place) => {
                     let mut offset = 0;
                     let tps = match tp {
-                        SType::Tuple(tps) => tps,
+                        Type::Tuple(tps) => tps,
                         _ => panic!("expected tuple, got: {:?}", tp),
                     };
                     for (pat, tp) in pats.into_iter().zip(tps) {
@@ -353,8 +354,8 @@ impl<'a> LowerCtx<'a> {
         // B. Extract the array length from the typechecker's knowledge
         let arr_type = self.types.get(&expr).unwrap();
         let len = match arr_type {
-            SType::Ptr { tp, .. } => match tp.as_ref() {
-                SType::Array(len, _) => *len,
+            Type::Ptr { tp, .. } => match tp.as_ref() {
+                Type::Array(len, _) => *len,
                 _ => panic!("Expected Array inside Ptr"),
             },
             _ => panic!("Expected Ptr type"),

@@ -4,9 +4,13 @@ use salsa::Database;
 
 use crate::{
     bytecode::{lower::LowerCtx, place::Place, value::Value},
+    def_map::{self, FunctionId},
     layout::get_size,
-    parser::ast,
-    typecheck::{self, FnSignature, InferenceResult},
+    mod_tree::mod_tree,
+    parser::{Crate, ast, func_ast},
+    resolve::{FnSignature, func_signature},
+    tp::Type,
+    typecheck::{self, InferenceResult},
 };
 
 pub mod ir;
@@ -15,38 +19,61 @@ mod place;
 mod value;
 
 #[salsa::tracked]
-pub fn compile<'db>(db: &'db dyn Database, prog: ast::File<'db>) -> ir::Prog {
-    let InferenceResult {
-        types,
-        signatures,
-        coercions,
-    } = typecheck::check_file(db, prog);
+pub fn compile<'db>(db: &'db dyn Database, c: Crate) -> Option<ir::Prog> {
+    let tree = mod_tree(db, c);
     let mut funcs = HashMap::new();
-    for def in prog.defs(db) {
-        match def {
-            ast::Def::FnDef(fn_def) => {
-                if let None = fn_def.body(db)
-                    && fn_def.ext(db)
-                {
-                    continue;
-                }
-                let sig = signatures.get(fn_def).unwrap();
-                let (name, func) = lower_function(db, *fn_def, sig, &types, &coercions);
-                funcs.insert(name, func);
+    for module_id in tree.keys() {
+        // 3. Get the DefMap for this module
+        let def_map = def_map::module_def_map(db, *module_id)?;
+
+        // 4. Look at everything defined in this module
+        for f in def_map.functions.values() {
+            let name = f.name(db);
+            if let Some(ir) = lower_function(db, *f) {
+                funcs.insert(name, ir);
             }
         }
     }
-    ir::Prog { funcs }
+    Some(ir::Prog { funcs })
 }
 
-pub fn lower_function<'db>(
-    db: &'db dyn Database,
-    ast_fn: ast::FnDef<'db>,
-    sig: &FnSignature,
-    types: &'db HashMap<ast::ExprId<'db>, typecheck::SType>,
-    coercions: &'db HashMap<ast::ExprId<'db>, typecheck::Coercion>,
-) -> (String, ir::Func) {
+// #[salsa::tracked]
+// pub fn compile<'db>(db: &'db dyn Database, prog: ast::File<'db>) -> ir::Prog {
+//     let InferenceResult { types, coercions } = typecheck::check_file(db, prog);
+//     let mut funcs = HashMap::new();
+//     for def in prog.defs(db) {
+//         match def {
+//             ast::Def::FnDef(fn_def) => {
+//                 if let None = fn_def.body(db)
+//                     && fn_def.ext(db)
+//                 {
+//                     continue;
+//                 }
+//                 let sig = signatures.get(fn_def).unwrap();
+//                 let (name, func) = lower_function(db, *fn_def, sig, &types, &coercions);
+//                 funcs.insert(name, func);
+//             }
+//         }
+//     }
+//     ir::Prog { funcs }
+// }
+
+#[salsa::tracked]
+pub fn lower_function<'db>(db: &'db dyn Database, f: FunctionId<'db>) -> Option<ir::Func> {
+    let hir_fn = func_ast(db, f);
+
+    if let None = hir_fn.body(db)
+        && hir_fn.ext(db)
+    {
+        return None;
+    }
+
     let mut builder = ir::IrBuilder::new();
+
+    let InferenceResult {
+        inferred_types: types,
+        coercions,
+    } = &typecheck::check_fn(db, f);
 
     let mut ctx = LowerCtx {
         db,
@@ -55,6 +82,8 @@ pub fn lower_function<'db>(
         types,
         coercions,
     };
+
+    let sig = func_signature(db, f);
 
     let ret_size = get_size(&sig.ret);
     let sret_place = if ret_size > 1 {
@@ -76,7 +105,7 @@ pub fn lower_function<'db>(
         param_regs.push(ctx.builder.new_reg());
     }
 
-    for (arg_id, ((pat, _), tp)) in ast_fn.args(db).into_iter().zip(&sig.args).enumerate() {
+    for (arg_id, ((pat, _), tp)) in hir_fn.args(db).into_iter().zip(&sig.args).enumerate() {
         let reg = param_regs[arg_id];
 
         let size = get_size(tp);
@@ -98,15 +127,12 @@ pub fn lower_function<'db>(
         (reg, Place::Reg(reg))
     });
 
-    ctx.lower_value(ast_fn.body(db).unwrap(), Some(place));
+    ctx.lower_value(hir_fn.body(db).unwrap(), Some(place));
     builder.blocks[builder.current_block.0].terminator = ir::Terminator::Return(reg);
 
-    (
-        ast_fn.name(db).text(db).clone(),
-        ir::Func {
-            register_count: builder.next_reg,
-            blocks: builder.blocks,
-            stack_slots: builder.stack_slots,
-        },
-    )
+    Some(ir::Func {
+        register_count: builder.next_reg,
+        blocks: builder.blocks,
+        stack_slots: builder.stack_slots,
+    })
 }

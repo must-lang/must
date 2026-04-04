@@ -1,8 +1,6 @@
-use std::collections::BTreeMap;
-
 use salsa::{Accumulator, Database};
 
-use crate::diagnostic::Diagnostic;
+use crate::{def_map::FunctionId, diagnostic::Diagnostic, parser::ast::FnDef};
 
 pub mod ast;
 
@@ -15,24 +13,13 @@ pub struct Source {
 }
 
 #[salsa::input(debug)]
-pub struct Workspace {
+pub struct Crate {
     #[returns(ref)]
-    pub files: BTreeMap<String, Source>,
+    pub root: Source,
 }
 
 #[salsa::tracked]
-pub fn parse_workspace<'db>(db: &'db dyn Database, w: Workspace) -> ast::Workspace<'db> {
-    let mut files = BTreeMap::new();
-    for (name, source) in w.files(db).to_owned() {
-        if let Some(file) = into_hir(db, source) {
-            files.insert(name, file);
-        }
-    }
-    ast::Workspace::new(db, files)
-}
-
-#[salsa::tracked]
-pub fn into_hir<'db>(db: &'db dyn Database, sf: Source) -> Option<ast::File<'db>> {
+pub fn parse_file<'db>(db: &'db dyn Database, sf: Source) -> Option<ast::File<'db>> {
     let parser = parser::FileParser::new();
     let input = sf.text(db);
     match parser.parse(db, input) {
@@ -42,4 +29,23 @@ pub fn into_hir<'db>(db: &'db dyn Database, sf: Source) -> Option<ast::File<'db>
             None
         }
     }
+}
+
+#[salsa::tracked]
+pub fn func_ast<'db>(db: &'db dyn Database, f: FunctionId<'db>) -> FnDef<'db> {
+    let m = f.module(db);
+    let c = m.c(db);
+    let sf = c.root(db);
+    let prog = parse_file(db, *sf).unwrap();
+    for def in prog.defs(db) {
+        match def {
+            ast::Def::FnDef(fn_def) => {
+                let name = fn_def.name(db).text(db);
+                if *name == f.name(db) {
+                    return *fn_def;
+                }
+            }
+        }
+    }
+    todo!()
 }
