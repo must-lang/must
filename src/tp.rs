@@ -15,9 +15,6 @@ pub enum Type {
 }
 
 impl Type {
-    pub fn unit() -> Self {
-        Type::Tuple(vec![])
-    }
     pub fn fun(args: Vec<Type>, ret: Type) -> Self {
         Type::Fn(args, Arc::new(ret))
     }

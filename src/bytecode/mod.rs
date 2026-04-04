@@ -4,12 +4,11 @@ use salsa::Database;
 
 use crate::{
     bytecode::{lower::LowerCtx, place::Place, value::Value},
-    def_map::{self, FunctionId},
+    def_map::{self, Function},
     layout::get_size,
     mod_tree::mod_tree,
-    parser::{Crate, ast, func_ast},
-    resolve::{FnSignature, func_signature},
-    tp::Type,
+    parser::Crate,
+    resolve::func_signature,
     typecheck::{self, InferenceResult},
 };
 
@@ -37,30 +36,9 @@ pub fn compile<'db>(db: &'db dyn Database, c: Crate) -> Option<ir::Prog> {
     Some(ir::Prog { funcs })
 }
 
-// #[salsa::tracked]
-// pub fn compile<'db>(db: &'db dyn Database, prog: ast::File<'db>) -> ir::Prog {
-//     let InferenceResult { types, coercions } = typecheck::check_file(db, prog);
-//     let mut funcs = HashMap::new();
-//     for def in prog.defs(db) {
-//         match def {
-//             ast::Def::FnDef(fn_def) => {
-//                 if let None = fn_def.body(db)
-//                     && fn_def.ext(db)
-//                 {
-//                     continue;
-//                 }
-//                 let sig = signatures.get(fn_def).unwrap();
-//                 let (name, func) = lower_function(db, *fn_def, sig, &types, &coercions);
-//                 funcs.insert(name, func);
-//             }
-//         }
-//     }
-//     ir::Prog { funcs }
-// }
-
 #[salsa::tracked]
-pub fn lower_function<'db>(db: &'db dyn Database, f: FunctionId<'db>) -> Option<ir::Func> {
-    let hir_fn = func_ast(db, f);
+pub fn lower_function<'db>(db: &'db dyn Database, f: Function<'db>) -> Option<ir::Func> {
+    let hir_fn = f.ast(db);
 
     if let None = hir_fn.body(db)
         && hir_fn.ext(db)

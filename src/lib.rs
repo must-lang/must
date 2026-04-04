@@ -6,7 +6,6 @@ mod lsp;
 mod mod_tree;
 mod parser;
 mod pipeline;
-mod queries;
 mod resolve;
 mod span;
 mod state;

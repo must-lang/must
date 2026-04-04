@@ -1,7 +1,4 @@
-use std::{
-    collections::{BTreeMap, HashMap},
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
 use salsa::{Accumulator, Database};
 
@@ -9,14 +6,11 @@ mod error;
 mod inference;
 
 use crate::{
-    def_map::{self, FunctionId},
+    def_map::{self, Function},
     diagnostic::Diagnostic,
     mod_tree::mod_tree,
-    parser::{
-        ast::{self, ExprId, FnDef},
-        func_ast,
-    },
-    resolve::{FnSignature, func_signature},
+    parser::ast::{self, ExprId},
+    resolve::func_signature,
     tp::Type,
     typecheck::inference::{InferenceCtx, UType, UTypeView, UnifVar},
 };
@@ -48,45 +42,12 @@ pub fn check_crate<'db>(db: &'db dyn salsa::Database, c: crate::parser::Crate) -
     Some(())
 }
 
-// #[salsa::tracked]
-// pub fn check_file<'db>(db: &'db dyn Database, sf: ast::File<'db>) -> InferenceResult<'db> {
-//     let mut types = BTreeMap::new();
-//     for def in sf.defs(db) {
-//         match def {
-//             ast::Def::FnDef(fn_def) => {
-//                 let (args, ret) = parse_fn_type(db, *fn_def);
-//                 let name = fn_def.name(db).text(db).clone();
-//                 types.insert(name, UType::fun(args, ret));
-//             }
-//         }
-//     }
-//     let def_idx = DefMap::new(db, types);
-//     let mut types: HashMap<ExprId<'db>, _> = HashMap::new();
-//     let mut signatures: HashMap<FnDef<'db>, _> = HashMap::new();
-//     let mut coercions: HashMap<ExprId<'db>, _> = HashMap::new();
-//     for def in sf.defs(db) {
-//         match def {
-//             ast::Def::FnDef(fn_def) => {
-//                 let (tps, sig, cs) = check_fn(db, *fn_def, def_idx);
-//                 types.extend(tps);
-//                 coercions.extend(cs);
-//                 signatures.insert(*fn_def, sig);
-//             }
-//         }
-//     }
-//     InferenceResult {
-//         types,
-//         signatures,
-//         coercions,
-//     }
-// }
-
 #[salsa::tracked]
-pub fn check_fn<'db>(db: &'db dyn Database, f: FunctionId<'db>) -> InferenceResult<'db> {
+pub fn check_fn<'db>(db: &'db dyn Database, f: Function<'db>) -> InferenceResult<'db> {
     let mut ctx = InferenceCtx::new(db, f);
     let sig = func_signature(db, f);
 
-    let fn_ast = func_ast(db, f);
+    let fn_ast = f.ast(db);
 
     for ((pat, _), tp) in fn_ast.args(db).into_iter().zip(sig.args) {
         for (name, tp, is_mut) in ctx.check_pat(pat, &tp.into()) {

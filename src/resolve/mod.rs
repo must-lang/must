@@ -1,10 +1,6 @@
 use salsa::Database;
 
-use crate::{
-    def_map::FunctionId,
-    parser::{ast, func_ast},
-    tp::Type,
-};
+use crate::{def_map::Function, parser::ast, tp::Type};
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub struct FnSignature {
@@ -19,14 +15,14 @@ impl FnSignature {
 }
 
 #[salsa::tracked]
-pub fn func_signature<'db>(db: &'db dyn Database, f: FunctionId<'db>) -> FnSignature {
-    let fn_def = func_ast(db, f);
-    let args = fn_def
+pub fn func_signature<'db>(db: &'db dyn Database, f: Function<'db>) -> FnSignature {
+    let args = f
+        .ast(db)
         .args(db)
         .iter()
         .map(|(_, tp)| parse_type(db, *tp))
         .collect();
-    let ret = parse_type(db, fn_def.ret_type(db));
+    let ret = parse_type(db, f.ast(db).ret_type(db));
     FnSignature { args, ret }
 }
 

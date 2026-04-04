@@ -3,9 +3,8 @@ use line_index::LineIndex;
 use tower_lsp::{LanguageServer, LspService, Server, jsonrpc, lsp_types::*};
 
 use crate::parser::{Crate, Source};
-use crate::{bytecode, diagnostic};
-// use crate::queries::compile_all;
 use crate::state::State;
+use crate::{diagnostic, typecheck};
 
 pub async fn run() {
     let stdin = tokio::io::stdin();
@@ -103,10 +102,10 @@ impl LanguageServer for Backend {
         let source = self.state.get_file(module_name).unwrap();
         let c = Crate::new(db, source);
 
-        let _ = bytecode::compile(db, c);
+        let _ = typecheck::check_crate(db, c);
 
         let diags: Vec<&diagnostic::Diagnostic> =
-            bytecode::compile::accumulated::<diagnostic::Diagnostic>(db, c);
+            typecheck::check_crate::accumulated::<diagnostic::Diagnostic>(db, c);
 
         let idx = LineIndex::new(source.text(db));
 

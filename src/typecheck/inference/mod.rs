@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use ena::unify::InPlaceUnificationTable;
 
 use crate::{
-    def_map::{FunctionId, module_def_map},
+    def_map::{Function, module_def_map},
     parser::ast,
     resolve::func_signature,
     typecheck::Coercion,
@@ -12,13 +12,13 @@ use crate::{
 pub struct InferenceCtx<'db> {
     unif: InPlaceUnificationTable<UnifVar>,
     scopes: Vec<HashMap<ast::Ident<'db>, (UType, bool)>>,
-    f: FunctionId<'db>,
+    f: Function<'db>,
     pub db: &'db dyn salsa::Database,
     pub inferred_types: HashMap<ast::ExprId<'db>, UType>,
     pub coercions: HashMap<ast::ExprId<'db>, Coercion>,
 }
 impl<'db> InferenceCtx<'db> {
-    pub fn new(db: &'db dyn salsa::Database, f: FunctionId<'db>) -> Self {
+    pub fn new(db: &'db dyn salsa::Database, f: Function<'db>) -> Self {
         Self {
             unif: InPlaceUnificationTable::new(),
             db,

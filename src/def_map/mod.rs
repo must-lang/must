@@ -3,19 +3,25 @@ use std::collections::HashMap;
 use salsa::Database;
 
 use crate::{
-    mod_tree::{ModuleData, ModuleId, mod_tree},
-    parser::{ast, parse_file},
+    mod_tree::ModuleId,
+    parser::{
+        ast::{self, FnDef},
+        parse_file,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub struct DefMap<'db> {
-    pub functions: HashMap<String, FunctionId<'db>>,
+    pub functions: HashMap<String, Function<'db>>,
 }
 
-#[salsa::interned(debug)]
-pub struct FunctionId {
+#[salsa::tracked(debug)]
+pub struct Function<'db> {
     pub name: String,
     pub module: ModuleId<'db>,
+
+    #[tracked]
+    pub ast: FnDef<'db>,
 }
 
 #[salsa::tracked]
@@ -29,7 +35,7 @@ pub fn module_def_map<'db>(db: &'db dyn Database, m: ModuleId<'db>) -> Option<De
         match def {
             ast::Def::FnDef(fn_def) => {
                 let name = fn_def.name(db).text(db);
-                let id = FunctionId::new(db, name, m);
+                let id = Function::new(db, name.clone(), m, *fn_def);
                 functions.insert(name.clone(), id);
             }
         }

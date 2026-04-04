@@ -1,7 +1,7 @@
 use ariadne::Source;
 use salsa::DatabaseImpl;
 
-use crate::{bytecode, diagnostic::Diagnostic, parser, queries, typecheck, vm};
+use crate::{bytecode, diagnostic::Diagnostic, parser, typecheck, vm};
 
 pub fn compile_prog(filename: String) -> Result<bytecode::ir::Prog, usize> {
     let text = std::fs::read_to_string(&filename).unwrap();

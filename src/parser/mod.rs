@@ -1,6 +1,6 @@
 use salsa::{Accumulator, Database};
 
-use crate::{def_map::FunctionId, diagnostic::Diagnostic, parser::ast::FnDef};
+use crate::diagnostic::Diagnostic;
 
 pub mod ast;
 
@@ -29,23 +29,4 @@ pub fn parse_file<'db>(db: &'db dyn Database, sf: Source) -> Option<ast::File<'d
             None
         }
     }
-}
-
-#[salsa::tracked]
-pub fn func_ast<'db>(db: &'db dyn Database, f: FunctionId<'db>) -> FnDef<'db> {
-    let m = f.module(db);
-    let c = m.c(db);
-    let sf = c.root(db);
-    let prog = parse_file(db, *sf).unwrap();
-    for def in prog.defs(db) {
-        match def {
-            ast::Def::FnDef(fn_def) => {
-                let name = fn_def.name(db).text(db);
-                if *name == f.name(db) {
-                    return *fn_def;
-                }
-            }
-        }
-    }
-    todo!()
 }
